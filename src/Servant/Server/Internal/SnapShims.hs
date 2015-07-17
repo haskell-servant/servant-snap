@@ -52,7 +52,7 @@ applicationToSnap :: (Request -> (Response -> IO Response) -> IO Response)
 applicationToSnap app = do
   req <- getRequest
   r <- liftIO $ putStrLn "***RUNNING APP***" >> app req return
-  return ()
+  putResponse r
 
 data Status = Status {
     statusCode    :: Int
