@@ -37,6 +37,8 @@ import           Snap.Internal.Http.Types
 import           Snap.Internal.Iteratee.Debug        (iterateeDebugWrapper)
 import qualified Snap.Iteratee                       as I
 
+import Debug.Trace
+
 type RoutingApplication =
      Request -- ^ the request, the field 'pathInfo' may be modified by url routing
   -> (RouteResult Response -> IO Response) -> IO Response
@@ -91,17 +93,17 @@ toApplication ra request respond = do
    where
      routingRespond :: Either RouteMismatch Response -> IO Response
      routingRespond (Left NotFound) =
-       respond $ responseLBS notFound404 [] "not found"
+       respond . traceShow "RR NOTFOUND" $ responseLBS notFound404 [] "not found"
      routingRespond (Left WrongMethod) =
-       respond $ responseLBS methodNotAllowed405 [] "method not allowed"
+       respond . traceShow "RR NOTALLOWED" $ responseLBS methodNotAllowed405 [] "method not allowed"
      routingRespond (Left (InvalidBody err)) =
-       respond $ responseLBS badRequest400 [] $ fromString $ "invalid request body: " ++ err
+       respond . traceShow "RR INVALIDBODY" $ responseLBS badRequest400 [] $ fromString $ "invalid request body: " ++ err
      routingRespond (Left UnsupportedMediaType) =
-       respond $ responseLBS unsupportedMediaType415 [] "unsupported media type"
+       respond . traceShow "RR BADMIME" $ responseLBS unsupportedMediaType415 [] "unsupported media type"
      routingRespond (Left (HttpError status body)) =
-       respond $ responseLBS status [] $ fromMaybe (BL.fromStrict $ statusMessage status) body
+       respond . traceShow "RR HTTP ERROR" $ responseLBS status [] $ fromMaybe (BL.fromStrict $ statusMessage status) body
      routingRespond (Right response) =
-       respond response
+       respond $ traceShow "RR SUCCESS" response
 
 
 responseLBS :: Status -> [(CI B.ByteString, B.ByteString)] -> BL.ByteString -> Response

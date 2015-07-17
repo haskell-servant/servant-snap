@@ -40,7 +40,7 @@ type TestApi =
 
        -- DELETE /greet/:greetid
   :<|> "greet" :> Capture "greetid" Text :> Delete '[JSON] ()
-  :<|> Get '[JSON] Greet
+  -- :<|> Get '[JSON] Greet
 
 testApi :: Proxy TestApi
 testApi = Proxy
@@ -52,7 +52,7 @@ testApi = Proxy
 --
 -- Each handler runs in the 'EitherT ServantErr IO' monad.
 server :: Server TestApi
-server = helloH :<|> postGreetH :<|> deleteGreetH :<|> nodeal
+server = helloH :<|> postGreetH :<|> deleteGreetH -- :<|> nodeal
 
   where helloH name Nothing = helloH name (Just False)
         helloH name (Just False) = return . Greet $ "Hello, " <> name
@@ -62,7 +62,7 @@ server = helloH :<|> postGreetH :<|> deleteGreetH :<|> nodeal
         postGreetH greet = return greet
 
         deleteGreetH _ = return ()
-        nodeal = return $ Greet "NoDeal"
+        -- nodeal = return $ Greet "NoDeal"
         justReq = snapToApplication $ writeBS "Hello"
         --justReq = cs $ mconcat (pathInfo req)
 

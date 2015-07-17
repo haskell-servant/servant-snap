@@ -26,3 +26,6 @@
 # Hmm. Snap doesn't seem to parse matrix params.. troublesome for Internal.hs. Will continue to depend on Wai for `parseQueryText` until we can replace it in snap-core or servant-server
 
 # Look at uri-bytestring. Once this gets matrix param supporte, we can use it instead of the Network.URI parser
+
+# Application <-> Snap ()
+I believe I need a function `snapServeApplication :: (Request -> (Respsonse -> IO Response) -> IO Response) -> Snap Response`

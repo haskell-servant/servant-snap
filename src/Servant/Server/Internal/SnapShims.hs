@@ -17,15 +17,6 @@ traceShow' a = traceShow a a
 type Application = Request -> (Response -> IO Response) -> IO Response
 
 
--- Usused. How do we convert between Snap actions and Applications?
-snapApplication :: (Request -> (Response -> IO Response) -> IO Response)
-snapApplication req handler = do
-  Right (_,resp') <- I.run $
-       runSnap (withResponse (liftIO . handler))
-       (\l -> putStrLn ("LOG: " ++ B8.unpack l))
-       (\_ -> putStrLn "TIMEOUT") req --TODO use real logging and timeout functions
-  return resp'
-
 snapToApplication :: Snap () -> Request -> (Response -> IO Response) -> IO Response
 snapToApplication snapAction req handler = do
   traceShow ("SNAPTOAPP REQ: " ++ show req) (return ())
@@ -43,12 +34,24 @@ snapToApplication snapAction req handler = do
       res' <- liftIO $ handler res
       return res'
 
+
+--runSnap :: Snap () -> Iteratee IO (Req,Resp)
+--Application = Request -> IO Callback -> IO Response
+
+-- serveApplication :: (Request -> (Response -> IO Response) -> IO Response) -> Snap ()
+-- serveApplication app = do
+--   req <- getRequest
+--   respIter <- liftIO snapPart req
+--   return undefined
+--   where snapPart :: Request -> (Request -> (Response -> IO Response) -> IO Response) -> IO Response
+--         snapPart req app = do
+--           app req (runSnap (liftIO $ app req))
+
 applicationToSnap :: (Request -> (Response -> IO Response) -> IO Response)
                   -> Snap ()
 applicationToSnap app = do
   req <- getRequest
-  traceShow ("HELLO" :: String) (return ())
-  r <- liftIO $ app req return
+  r <- liftIO $ putStrLn "***RUNNING APP***" >> app req return
   return ()
 
 data Status = Status {
