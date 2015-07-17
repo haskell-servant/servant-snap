@@ -28,4 +28,6 @@
 # Look at uri-bytestring. Once this gets matrix param supporte, we can use it instead of the Network.URI parser
 
 # Application <-> Snap ()
+
 I believe I need a function `snapServeApplication :: (Request -> (Respsonse -> IO Response) -> IO Response) -> Snap Response`
+This is proving to be a pain to write. The arguments to the `Application` function aren't easy to get at. I need to lift the callback in the second argument into the Snap monad.

@@ -7,10 +7,12 @@ module Servant.Server.Internal.RoutingApplication where
 
 import           Blaze.ByteString.Builder.ByteString (fromLazyByteString)
 import           Control.Applicative                 (Applicative, (<$>))
+import Control.Monad (liftM)
 import           Control.Monad.IO.Class              (MonadIO (..), liftIO)
 import           Control.Monad.Trans.Class           (lift)
 import           Control.Monad.Trans.Either          (EitherT, runEitherT)
 import qualified Data.ByteString                     as B
+import qualified Data.ByteString.Char8               as B8
 import qualified Data.ByteString.Lazy                as BL
 import           Data.CaseInsensitive                (CI)
 import           Data.IORef                          (IORef, newIORef,
@@ -36,6 +38,7 @@ import           Snap.Core
 import           Snap.Internal.Http.Types
 import           Snap.Internal.Iteratee.Debug        (iterateeDebugWrapper)
 import qualified Snap.Iteratee                       as I
+import Snap.Internal.Iteratee.Debug as ID
 
 import Debug.Trace
 
@@ -154,26 +157,41 @@ isMismatch _             = False
 peekRequestBody :: forall m. MonadIO m => Int64 -> Request -> m B.ByteString
 peekRequestBody nMax request =
   do
+    liftIO $ putStrLn "IN PEEKBODY"
     (SomeEnumerator enum) <- liftIO $ readIORef (rqBody request)
+
     consumeStep <- liftIO $ I.runIteratee I.consume
-    step <- liftIO $ I.runIteratee $ I.joinI $ I.takeNoMoreThan nMax consumeStep
-    body <- liftIO $ fmap B.concat $ I.run_ $ enum step -- TODO run_ is unsafe
-    let e = I.enumBS body I.>==> I.joinI . I.take 0
-    let e' st =
-          do
-            let ii = iterateeDebugWrapper "regurgitate body" (I.returnI st)
-            st' <- lift $ I.runIteratee ii
-            e st'
-    liftIO $ writeIORef (rqBody request) $ SomeEnumerator e'
-    return body
+    liftIO $ print "about to get step"
+    step <- liftIO $ I.runIteratee $ I.joinI $ I.takeNoMoreThan 15 consumeStep
+    liftIO $ print "about to get body"
+
+    eBody <- liftIO $ I.run $ enum step -- TODO run_ is unsafe
+    case eBody of
+      Left e -> error $ "ERROR: " ++  show e
+      Right body' -> do
+        let body = B.concat body'
+        liftIO $ print "THE WHOLE BODY"
+        liftIO $ print body
+        let e = I.enumBS body I.>==> I.joinI . I.take 0
+        let e' st =
+                  do
+                    let ii = iterateeDebugWrapper "regurgitate body" (I.returnI st)
+                    st' <- lift $ I.runIteratee ii
+                    e st'
+        liftIO $ writeIORef (rqBody request) $ SomeEnumerator e'
+        liftIO $ putStrLn $ "PEEKBODY: " ++ B8.unpack body
+        return body
 
 peekRequestBodyIO :: Int64 -> Request -> IO B.ByteString
 peekRequestBodyIO nMax request =
   do
+    print "IN ITERATEE PART"
     (SomeEnumerator enum) <- readIORef (rqBody request)
     consumeStep <- I.runIteratee I.consume
     step <- I.runIteratee $ I.joinI $ I.takeNoMoreThan nMax consumeStep
-    body <- fmap B.concat $ I.run_ $ enum step -- TODO run_ is unsafe
+    print "ABOUT TO GRAB THE BODY"
+    body <- fmap B.concat $ I.run_ $ ID.iterateeDebugWrapperWith show "DEBUG WRAPPER" (enum step) -- TODO run_ is unsafe
+    print "BODY READ FINISHED"
     let e = I.enumBS body I.>==> I.joinI . I.take 0
     let e' st =
           do
@@ -181,4 +199,5 @@ peekRequestBodyIO nMax request =
             st' <- lift $ I.runIteratee ii
             e st'
     writeIORef (rqBody request) $ SomeEnumerator e'
+    putStrLn $ "PEEKBODY: " ++ B8.unpack body
     return body

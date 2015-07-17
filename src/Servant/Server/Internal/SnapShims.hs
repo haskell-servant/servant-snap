@@ -27,7 +27,6 @@ snapToApplication snapAction req handler = do
   return resp'
   where
     snapHelper = do
-      liftIO $ putStr "SNAPHELPER Req: "
       putRequest (traceShow' req)
       snapAction
       res <- getResponse
