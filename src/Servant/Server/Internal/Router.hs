@@ -12,16 +12,16 @@ import           Snap.Core
 import Debug.Trace
 
 -- | Internal representation of a router.
-data Router =
-    WithRequest   (Request -> Router)
+data Router req app =
+    WithRequest   (req -> Router req app)
       -- ^ current request is passed to the router
-  | StaticRouter  (Map Text Router)
+  | StaticRouter  (Map Text (Router req app))
       -- ^ first path component used for lookup and removed afterwards
-  | DynamicRouter (Text -> Router)
+  | DynamicRouter (Text -> Router req app)
       -- ^ first path component used for lookup and removed afterwards
   | LeafRouter    RoutingApplication
       -- ^ to be used for routes that match an empty path
-  | Choice        Router Router
+  | Choice        (Router req app) (Router req app)
       -- ^ left-biased choice between two routers
 
 -- | Smart constructor for the choice between routers.
@@ -35,7 +35,7 @@ data Router =
 --     passing the same request to both but ignoring it in the
 --     component that does not need it.
 --
-choice :: Router -> Router -> Router
+choice :: Router req app -> Router req app -> Router req app
 choice (StaticRouter table1) (StaticRouter table2) =
   StaticRouter (M.unionWith choice table1 table2)
 choice (DynamicRouter fun1)  (DynamicRouter fun2)  =
@@ -49,7 +49,7 @@ choice router1 (WithRequest router2) =
 choice router1 router2 = Choice router1 router2
 
 -- | Interpret a router as an application.
-runRouter :: Router -> RoutingApplication
+runRouter :: Router Request RoutingApplication -> RoutingApplication
 runRouter (WithRequest router) request respond =
   runRouter (router request) (traceStack (("WITHREQUEST req: "++) $ show request) request) respond
 runRouter (StaticRouter table) request respond =
