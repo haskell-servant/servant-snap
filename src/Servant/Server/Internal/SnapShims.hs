@@ -14,24 +14,24 @@ import           Debug.Trace
 
 traceShow' a = traceShow a a
 
-type Application = Request -> (Response -> IO Response) -> IO Response
+type Application m = Request -> (Response -> m Response) -> m Response
 
 
-snapToApplication :: Snap () -> Request -> (Response -> IO Response) -> IO Response
-snapToApplication snapAction req handler = do
-  traceShow ("SNAPTOAPP REQ: " ++ show req) (return ())
-  Right (_,resp') <- I.run $
-    runSnap snapHelper
-    (\l -> putStrLn ("LOG: " ++ B8.unpack l))
-    (const $ putStrLn "TIMEOUT") req -- TODO use real logging and timeout functions
-  return resp'
-  where
-    snapHelper = do
-      putRequest (traceShow' req)
-      snapAction
-      res <- getResponse
-      res' <- liftIO $ handler res
-      return res'
+-- snapToApplication :: MonadSnap m => m () -> Request -> (Response -> m Response) -> m Response
+-- snapToApplication snapAction req handler = do
+--   traceShow ("SNAPTOAPP REQ: " ++ show req) (return ())
+--   Right (_,resp') <- liftIO $ I.run $
+--     liftSnap $ runSnap snapHelper
+--     (\l -> putStrLn ("LOG: " ++ B8.unpack l))
+--     (const $ putStrLn "TIMEOUT") req -- TODO use real logging and timeout functions
+--   return resp'
+--   where
+--     snapHelper = do
+--       putRequest (traceShow' req)
+--       snapAction
+--       res <- getResponse
+--       res' <- handler res
+--       return res'
 
 
 --runSnap :: Snap () -> Iteratee IO (Req,Resp)
@@ -46,12 +46,13 @@ snapToApplication snapAction req handler = do
 --         snapPart req app = do
 --           app req (runSnap (liftIO $ app req))
 
-applicationToSnap :: (Request -> (Response -> IO Response) -> IO Response)
-                  -> Snap ()
-applicationToSnap app = do
-  req <- getRequest
-  r <- liftIO $ putStrLn "***RUNNING APP***" >> app req return
-  putResponse r
+-- applicationToSnap :: MonadSnap m
+--                   => Application m
+--                   -> Snap ()
+-- applicationToSnap app = do
+--   req <- getRequest
+--   r <- liftIO $ putStrLn "***RUNNING APP***" >> app req return
+--   putResponse r
 
 data Status = Status {
     statusCode    :: Int

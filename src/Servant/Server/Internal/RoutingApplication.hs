@@ -44,7 +44,7 @@ import Debug.Trace
 
 type RoutingApplication =
      Request -- ^ the request, the field 'pathInfo' may be modified by url routing
-  -> (RouteResult Response -> IO Response) -> IO Response
+  -> (RouteResult Response -> Snap Response) -> Snap Response
 
 
 -- | A wrapper around @'Either' 'RouteMismatch' a@.
@@ -83,18 +83,15 @@ instance Monoid RouteMismatch where
   mappend = max
 
 
-toApplication :: RoutingApplication
-              -> Request
-              -> (Response -> IO Response)
-              -> IO Response
+toApplication :: MonadSnap m => RoutingApplication -> Application m
 toApplication ra request respond = do
-  liftIO $ putStrLn "TO  APPLICATION" -- TODO delete
-  r <- liftIO $ ra request (routingRespond . traceShow' . routeResult)
-  putStrLn $ "toApp response: " <> show r
-  return r
+  --liftIO $ putStrLn "TO  APPLICATION" -- TODO delete
+  r <- (liftSnap <$> ra) request (routingRespond . routeResult)
+  --liftIO $ putStrLn $ "toApp response: " <> show r
+  return (undefined r)
 
    where
-     routingRespond :: Either RouteMismatch Response -> IO Response
+     --routingRespond :: MonadSnap m => Either RouteMismatch Response -> m Response
      routingRespond (Left NotFound) =
        respond . traceShow "RR NOTFOUND" $ responseLBS notFound404 [] "not found"
      routingRespond (Left WrongMethod) =
@@ -116,10 +113,10 @@ responseLBS (Status code msg) hs body =
     . setResponseBody (I.enumBuilder . fromLazyByteString $ body)
     $ emptyResponse
 
-runAction :: IO (RouteResult (EitherT ServantErr IO a))
-          -> (RouteResult Response -> IO r)
+runAction :: Snap (RouteResult (EitherT ServantErr Snap a))
+          -> (RouteResult Response -> Snap r)
           -> (a -> RouteResult Response)
-          -> IO r
+          -> Snap r
 runAction action respond k = do
   r <- action
   go r
@@ -131,7 +128,7 @@ runAction action respond k = do
         Left err -> succeedWith $ responseServantErr err
     go (RR (Left err)) = respond $ failWith err
 
-feedTo :: IO (RouteResult (a -> b)) -> a -> IO (RouteResult b)
+feedTo :: Snap (RouteResult (a -> b)) -> a -> Snap (RouteResult b)
 feedTo f x = (($ x) <$>) <$> f
 
 extractL :: RouteResult (a :<|> b) -> RouteResult a

@@ -19,7 +19,7 @@ module Servant.Server.Internal
   ) where
 
 import           Control.Applicative         ((<$>))
-import           Control.Monad.Trans.Either  (EitherT)
+import           Control.Monad.Trans.Either  (EitherT(..))
 import qualified Data.ByteString             as B
 import qualified Data.ByteString.Lazy        as BL
 import           Data.CaseInsensitive        (mk)
@@ -62,9 +62,10 @@ import           Servant.Server.Internal.SnapShims
 class HasServer layout where
   type ServerT layout (m :: * -> *) :: *
 
-  route :: Proxy layout -> IO (RouteResult (Server layout)) -> Router Request RoutingApplication
+  route :: Proxy layout -> Snap (RouteResult (Server layout)) -> Router Request RoutingApplication
+  --route :: (MonadSnap m) => Proxy layout -> m (RouteResult (Server layout)) -> Router Request RoutingApplication
 
-type Server layout = ServerT layout (EitherT ServantErr IO)
+type Server layout = ServerT layout (EitherT ServantErr Snap)
 
 -- * Instances
 
@@ -125,7 +126,7 @@ instance (KnownSymbol capture, FromText a, HasServer sublayout)
 
 methodRouter :: (AllCTRender ctypes a)
              => Method -> Proxy ctypes -> Status
-             -> IO (RouteResult (EitherT ServantErr IO a))
+             -> Snap (RouteResult (EitherT ServantErr Snap a))
              -> Router Request RoutingApplication
 methodRouter method proxy status action = LeafRouter route'
   where
@@ -143,7 +144,7 @@ methodRouter method proxy status action = LeafRouter route'
 
 methodRouterHeaders :: (GetHeaders (Headers h v), AllCTRender ctypes v)
                     => Method -> Proxy ctypes -> Status
-                    -> IO (RouteResult (EitherT ServantErr IO (Headers h v)))
+                    -> Snap (RouteResult (EitherT ServantErr Snap (Headers h v)))
                     -> Router Request RoutingApplication
 methodRouterHeaders method proxy status action = LeafRouter route'
   where
@@ -161,7 +162,7 @@ methodRouterHeaders method proxy status action = LeafRouter route'
       | otherwise = respond $ failWith NotFound
 
 methodRouterEmpty :: Method
-                  -> IO (RouteResult (EitherT ServantErr IO ()))
+                  -> Snap (RouteResult (EitherT ServantErr Snap ()))
                   -> Router Request RoutingApplication
 methodRouterEmpty method action = LeafRouter route'
   where
@@ -628,14 +629,16 @@ instance (KnownSymbol sym, HasServer sublayout)
 -- > server = serveDirectory "/var/www/images"
 instance HasServer Raw where
 
-  type ServerT Raw m = Request -> (Response -> IO Response) -> IO Response
+  type ServerT Raw m = Application Snap  --TODO MonadSnap? Can we have Raw (Handler App App ()?)
 
   -- route :: Proxy layout -> IO (RouteResult (Server layout)) -> Router
   route Proxy rawApplication = LeafRouter $ \ request respond -> do
     r <- rawApplication
     case r of
       RR (Left err)  -> respond $ failWith err
-      RR (Right app) -> app request (respond . succeedWith)
+      RR (Right app) -> app request ( respond . succeedWith)
+        --runApp <- app request ((liftSnap <$> respond) . succeedWith)
+        --let b = runApp :: Int
 
 -- | If you use 'ReqBody' in one of the endpoints for your API,
 -- this automatically requires your server-side handler to be a function
@@ -671,7 +674,7 @@ instance ( AllCTUnrender list a, HasServer sublayout
       -- http://www.w3.org/2001/tag/2002/0129-mime
       let contentTypeH = fromMaybe "application/octet-stream"
                        $ getHeader (mk "Content-Type") request
-      rBody <- BL.fromStrict <$> peekRequestBodyIO 10000 request
+      rBody <- readRequestBody 10000
       mrqbody <- handleCTypeH (Proxy :: Proxy list) (cs contentTypeH)
                  <$> return rBody -- lazyRequestBody request
       case mrqbody of

@@ -37,6 +37,6 @@ import qualified Snap.Util.FileServe               as Snap
 -- handler in the last position, because /servant/ will try to match the handlers
 -- in order.
 serveDirectory :: FilePath -> Server Raw
-serveDirectory fp req handler =
-  (snapToApplication (Snap.serveDirectory fp) req handler)
+serveDirectory fp req handler = undefined --TODO
+  -- (snapToApplication (Snap.serveDirectory fp) req handler)
     --staticApp . defaultFileServerSettings . addTrailingPathSeparator
