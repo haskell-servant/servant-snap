@@ -12,13 +12,13 @@ import           Data.Text
 import           GHC.Generics
 --import Network.Wai
 --import Network.Wai.Handler.Warp
+import qualified Data.ByteString.Char8 as BS
 import           Servant.Server.Internal.SnapShims
-import           Snap.Core
+import           Snap.Core hiding (serveDirectory)
 import           Snap.Http.Server
 
 import           Servant
 
-import           Debug.Trace
 -- * Example
 
 -- | A greet message data type
@@ -42,6 +42,10 @@ type TestApi =
   :<|> "greet" :> Capture "greetid" Text :> Delete '[JSON] ()
   -- :<|> Get '[JSON] Greet
 
+  :<|> "testraw" :> Raw
+
+  :<|> "dir" :> Raw
+
 testApi :: Proxy TestApi
 testApi = Proxy
 
@@ -52,7 +56,7 @@ testApi = Proxy
 --
 -- Each handler runs in the 'EitherT ServantErr IO' monad.
 server :: Server TestApi
-server = helloH :<|> postGreetH :<|> deleteGreetH -- :<|> nodeal
+server = helloH :<|> postGreetH :<|> deleteGreetH  :<|> testRaw :<|> (snapToApplication $ writeBS "Ok")
 
   where helloH name Nothing = helloH name (Just False)
         helloH name (Just False) = return . Greet $ "Hello, " <> name
@@ -63,13 +67,15 @@ server = helloH :<|> postGreetH :<|> deleteGreetH -- :<|> nodeal
 
         deleteGreetH _ = return ()
         -- nodeal = return $ Greet "NoDeal"
-        justReq = snapToApplication $ writeBS "Hello"
+        --justReq = writeBS "Hello"
+        testRaw :: Application
+        testRaw = snapToApplication $ getRequest >>= writeBS . BS.pack . show
         --justReq = cs $ mconcat (pathInfo req)
 
 -- Turn the server into a WAI app. 'serve' is provided by servant,
 -- more precisely by the Servant.Server module.
 test :: Application
-test = traceShow "TESTING" $ serve testApi server
+test = serve testApi server
 
 -- Run the server.
 --
@@ -77,7 +83,7 @@ test = traceShow "TESTING" $ serve testApi server
 runTestServer :: Int -> IO ()
 runTestServer port = simpleHttpServe
                      (setPort port mempty :: Config Snap ())
-                     (applicationToSnap test)
+                     (applicationToSnap test :: Snap ())
 
 -- Put this all to work!
 main :: IO ()

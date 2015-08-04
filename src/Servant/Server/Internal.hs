@@ -629,7 +629,7 @@ instance (KnownSymbol sym, HasServer sublayout)
 -- > server = serveDirectory "/var/www/images"
 instance HasServer Raw where
 
-  type ServerT Raw m = Application Snap  --TODO MonadSnap? Can we have Raw (Handler App App ()?)
+  type ServerT Raw m = Application
 
   -- route :: Proxy layout -> IO (RouteResult (Server layout)) -> Router
   route Proxy rawApplication = LeafRouter $ \ request respond -> do

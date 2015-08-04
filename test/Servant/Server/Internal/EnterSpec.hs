@@ -9,10 +9,12 @@ import           Control.Monad.Trans.Either
 import           Data.Proxy
 import           Servant.API
 import           Servant.Server
+import           Snap.Core
 
 import           Test.Hspec                    (Spec, describe, it)
-import           Test.Hspec.Wai                (get, matchStatus, post,
-                                                shouldRespondWith, with)
+--import           Test.Hspec.Wai                (get, matchStatus, post,
+--                                                shouldRespondWith, with)
+import           Test.Hspec.Snap
 
 spec :: Spec
 spec = describe "module Servant.Server.Enter" $ do
@@ -34,7 +36,7 @@ combinedAPI = Proxy
 readerServer' :: ServerT ReaderAPI (Reader String)
 readerServer' = return 1797 :<|> ask
 
-fReader :: Reader String :~> EitherT ServantErr IO
+fReader :: Reader String :~> EitherT ServantErr Snap
 fReader = generalizeNat C.. (runReaderTNat "hi")
 
 readerServer :: Server ReaderAPI

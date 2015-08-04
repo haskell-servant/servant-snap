@@ -83,12 +83,10 @@ instance Monoid RouteMismatch where
   mappend = max
 
 
-toApplication :: MonadSnap m => RoutingApplication -> Application m
+toApplication :: RoutingApplication -> Application
 toApplication ra request respond = do
-  --liftIO $ putStrLn "TO  APPLICATION" -- TODO delete
-  r <- (liftSnap <$> ra) request (routingRespond . routeResult)
-  --liftIO $ putStrLn $ "toApp response: " <> show r
-  return (undefined r)
+  r <- ra request (routingRespond . routeResult)
+  respond r
 
    where
      --routingRespond :: MonadSnap m => Either RouteMismatch Response -> m Response

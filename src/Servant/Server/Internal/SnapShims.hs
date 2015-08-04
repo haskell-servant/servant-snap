@@ -2,57 +2,24 @@
 
 module Servant.Server.Internal.SnapShims where
 
-import           Control.Monad
 import           Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString        as B
-import qualified Data.ByteString.Char8  as B8
 import           Data.IORef
 import           Snap.Core
-import qualified Snap.Iteratee          as I
-
-import           Debug.Trace
-
-traceShow' a = traceShow a a
-
-type Application m = Request -> (Response -> m Response) -> m Response
 
 
--- snapToApplication :: MonadSnap m => m () -> Request -> (Response -> m Response) -> m Response
--- snapToApplication snapAction req handler = do
---   traceShow ("SNAPTOAPP REQ: " ++ show req) (return ())
---   Right (_,resp') <- liftIO $ I.run $
---     liftSnap $ runSnap snapHelper
---     (\l -> putStrLn ("LOG: " ++ B8.unpack l))
---     (const $ putStrLn "TIMEOUT") req -- TODO use real logging and timeout functions
---   return resp'
---   where
---     snapHelper = do
---       putRequest (traceShow' req)
---       snapAction
---       res <- getResponse
---       res' <- handler res
---       return res'
+type Application = Request -> (Response -> Snap Response) -> Snap Response
 
-
---runSnap :: Snap () -> Iteratee IO (Req,Resp)
---Application = Request -> IO Callback -> IO Response
-
--- serveApplication :: (Request -> (Response -> IO Response) -> IO Response) -> Snap ()
--- serveApplication app = do
---   req <- getRequest
---   respIter <- liftIO snapPart req
---   return undefined
---   where snapPart :: Request -> (Request -> (Response -> IO Response) -> IO Response) -> IO Response
---         snapPart req app = do
---           app req (runSnap (liftIO $ app req))
-
--- applicationToSnap :: MonadSnap m
---                   => Application m
---                   -> Snap ()
--- applicationToSnap app = do
---   req <- getRequest
---   r <- liftIO $ putStrLn "***RUNNING APP***" >> app req return
---   putResponse r
+snapToApplication :: Snap () -> Application
+snapToApplication snapAction req respond = do
+  putRequest req
+  snapAction >> getResponse >>= respond
+  
+applicationToSnap :: Application -> Snap ()
+applicationToSnap app = do
+  req <- getRequest
+  r <- liftIO (putStrLn "APPLICATION TO SNAP")  >> app req return
+  putResponse r
 
 data Status = Status {
     statusCode    :: Int
