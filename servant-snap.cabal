@@ -106,6 +106,7 @@ test-suite spec
     , exceptions
     , hspec == 2.*
     , hspec-snap
+    , hspec-core
   --  , hspec-wai
     , http-types
     , network >= 2.6

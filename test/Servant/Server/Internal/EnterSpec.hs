@@ -9,9 +9,10 @@ import           Control.Monad.Trans.Either
 import           Data.Proxy
 import           Servant.API
 import           Servant.Server
+import           Servant.Server.Internal.SnapShims
 import           Snap.Core
 
-import           Test.Hspec                    (Spec, describe, it)
+import           Test.Hspec                    (Spec, describe, it, before)
 --import           Test.Hspec.Wai                (get, matchStatus, post,
 --                                                shouldRespondWith, with)
 import           Test.Hspec.Snap
@@ -50,12 +51,12 @@ combinedReaderServer = enter fReader combinedReaderServer'
 
 enterSpec :: Spec
 enterSpec = describe "Enter" $ do
-  with (return (serve readerAPI readerServer)) $ do
+  before (return (serve readerAPI readerServer)) $ do
 
     it "allows running arbitrary monads" $ do
-      get "int" `shouldRespondWith` "1797"
-      post "string" "3" `shouldRespondWith` "\"hi\""{ matchStatus = 201 }
+      get "int" `shouldEqual` Html "1797"
+      post "string" "3" `shouldEqual` Other 201
 
-  with (return (serve combinedAPI combinedReaderServer)) $ do
+  before (return (serve combinedAPI combinedReaderServer)) $ do
     it "allows combnation of enters" $ do
-      get "bool" `shouldRespondWith` "true"
+      shouldBeTrue $ get "bool"

@@ -11,6 +11,7 @@ module Servant.ServerSpec where
 
 import           Control.Monad              (forM_, when)
 import           Control.Monad.Trans.Either (EitherT, left)
+import           Control.Monad.IO.Class     (liftIO)
 import           Data.Aeson                 (FromJSON, ToJSON, decode', encode)
 import           Data.ByteString.Conversion ()
 import           Data.Char                  (toUpper)
@@ -24,16 +25,18 @@ import           Network.HTTP.Types         (hAccept, hContentType,
                                              methodDelete, methodGet,
                                              methodPatch, methodPost, methodPut,
                                              ok200, parseQuery, status409)
-import           Network.Wai                (Application, Request, pathInfo,
-                                             queryString, rawQueryString,
-                                             responseLBS)
-import           Network.Wai.Test           (defaultRequest, request,
-                                             runSession, simpleBody)
-import           Test.Hspec                 (Spec, describe, it, shouldBe)
-import           Test.Hspec.Wai             (get, liftIO, matchHeaders,
-                                             matchStatus, post, request,
-                                             shouldRespondWith, with, (<:>))
-
+--import           Network.Wai                (Application, Request, pathInfo,
+--                                             queryString, rawQueryString,
+--                                             responseLBS)
+import           Snap.Test                  hiding (with, get)
+--import           Network.Wai.Test           (defaultRequest, request,
+--                                             runSession, simpleBody)
+import           Test.Hspec
+import           Test.Hspec.Core.Spec (Result(..))
+-- import           Test.Hspec.Wai             (get, liftIO, matchHeaders,
+--                                              matchStatus, post, request,
+--                                              shouldRespondWith, with, (<:>))
+import           Test.Hspec.Snap
 import           Servant.API                ((:<|>) (..), (:>),
                                              addHeader, Capture,
                                              Delete, Get, Header (..), Headers,
@@ -43,7 +46,7 @@ import           Servant.API                ((:<|>) (..), (:>),
                                              QueryParams, Raw, ReqBody)
 import           Servant.Server             (Server, serve, ServantErr(..), err404)
 import           Servant.Server.Internal.RoutingApplication
-                                            (RouteMismatch (..))
+import           Servant.Server.Internal.PathInfo (pathInfo)
 
 
 -- * test data types
@@ -81,18 +84,18 @@ tweety = Animal "Bird" 2
 spec :: Spec
 spec = do
   captureSpec
-  getSpec
-  postSpec
-  putSpec
-  patchSpec
-  queryParamSpec
-  matrixParamSpec
-  headerSpec
-  rawSpec
-  unionSpec
-  prioErrorsSpec
-  errorsSpec
-  responseHeadersSpec
+  -- getSpec
+  -- postSpec
+  -- putSpec
+  -- patchSpec
+  -- queryParamSpec
+  -- matrixParamSpec
+  -- headerSpec
+  -- rawSpec
+  -- unionSpec
+  -- prioErrorsSpec
+  -- errorsSpec
+  -- responseHeadersSpec
 
 
 type CaptureApi = Capture "legs" Integer :> Get '[JSON] Animal
@@ -107,42 +110,54 @@ captureServer legs = case legs of
 captureSpec :: Spec
 captureSpec = do
   describe "Servant.API.Capture" $ do
-    with (return (serve captureApi captureServer)) $ do
+    before (return (serve captureApi captureServer)) $ do
 
       it "can capture parts of the 'pathInfo'" $ do
         response <- get "/2"
-        liftIO $ decode' (simpleBody response) `shouldBe` Just tweety
+        case response of
+          Json bs -> do
+            d <- liftIO $ decode' bs
+            d `shouldEqual` Just tweety
+          _       -> setResult (Fail "Should have been json body")
 
       it "returns 404 if the decoding fails" $ do
-        get "/notAnInt" `shouldRespondWith` 404
+        get "/notAnInt" >>= should404
 
-    with (return (serve
+    before (return (serve
         (Proxy :: Proxy (Capture "captured" String :> Raw))
         (\ "captured" request_ respond ->
             respond $ responseLBS ok200 [] (cs $ show $ pathInfo request_)))) $ do
       it "strips the captured path snippet from pathInfo" $ do
-        get "/captured/foo" `shouldRespondWith` (fromString (show ["foo" :: String]))
+        get "/captured/foo" >>= shouldEqual (fromString (show ["foo" :: String]))
 
+{-
 
 type GetApi = Get '[JSON] Person
         :<|> "empty" :> Get '[] ()
 getApi :: Proxy GetApi
 getApi = Proxy
 
+should405 :: TestResponse -> SnapHspecM b ()
+should405 (Html _) = setResult (Fail "Should have failed, got HTML")
+should405 (Other 405) = setResult Success
+should405 _ = setResult (Fail "Should have 405'd")
+
 getSpec :: Spec
 getSpec = do
   describe "Servant.API.Get" $ do
     let server = return alice :<|> return ()
-    with (return $ serve getApi server) $ do
+    before (return $ serve getApi server) $ do
 
       it "allows to GET a Person" $ do
         response <- get "/"
-        return response `shouldRespondWith` 200
-        liftIO $ decode' (simpleBody response) `shouldBe` Just alice
+        return response >>= should200
+        case response of
+          Json bs -> do
+            liftIO $ decode' bs >>= shouldEqual (Just alice)
 
       it "throws 405 (wrong method) on POSTs" $ do
-        post "/" "" `shouldRespondWith` 405
-        post "/empty" "" `shouldRespondWith` 405
+        post "/" "" >>= should405
+        post "/empty" "" >>= should405
 
       it "returns 204 if the type is '()'" $ do
         get "empty" `shouldRespondWith` ""{ matchStatus = 204 }
@@ -667,3 +682,4 @@ errorsSpec = do
       nf <> he `shouldBe` he
       nf <> ib `shouldBe` ib
       nf <> wm `shouldBe` wm
+-}
