@@ -6,6 +6,7 @@
 {-# LANGUAGE TypeOperators     #-}
 {-# LANGUAGE TemplateHaskell   #-}
 
+import           Blaze.ByteString.Builder
 import           Control.Error
 import           Control.Monad.Trans.Either
 import           Control.Monad.Trans.Class (lift)
@@ -18,10 +19,17 @@ import           GHC.Generics
 --import Network.Wai
 --import Network.Wai.Handler.Warp
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.Text.Encoding as T
+import Heist
+import qualified Heist.Interpreted as I
 import           Servant.Server.Internal.SnapShims
 import           Servant.HTML.Blaze
 import           Snap.Core
 import           Snap.Snaplet
+import           Snap.Snaplet.Auth
+import           Snap.Snaplet.Session
+import           Snap.Snaplet.Session.Backends.CookieSession
+import           Snap.Snaplet.Auth.Backends.JsonFile
 import           Snap.Snaplet.Heist
 import           Snap.Http.Server
 
@@ -48,7 +56,8 @@ type TestApi =
 
        -- DELETE /greet/:greetid
   :<|> "greet" :> Capture "greetid" Text :> Delete '[JSON] ()
-  :<|> "template" :> Capture "name" :> Get '[HTML] ()
+
+  -- :<|> "template" :> Capture "name" Text :> Get '[HTML] (BS.ByteString)
 
   -- :<|> Get '[JSON] Greet
 
@@ -56,12 +65,33 @@ type TestApi =
 
   -- :<|> "dir" :> Raw
 
-helloH' :: Text -> Maybe Bool -> EitherT ServantErr (Handler App App) Greet
-helloH' name _ = return (Greet $ "Hi from snaplet, " <> name)
+--doTemplate = undefined
+-- doTemplate :: Text -> EitherT ServantErr (Handler App App) Text
+-- doTemplate name = EitherT $ fmap Right $ withHeistState (\(hs) -> (undefined :: Handler App App Text))-- (\s -> I.renderTemplate s "test" >>= runTempl)
+--   where runTempl Nothing = error "Problem"
+--         runTempl (Just (m,b)) = return (T.decodeUtf8 $ toByteString b)
+-- doTemplate :: Text -> EitherT ServantErr (Handler App App) BS.ByteString
+-- doTemplate name = lift $ do
+--   s <- getHeistState
+--   m <- I.renderTemplate s "test"
+--   case m of
+--     Nothing -> error "template error"
+--     Just (b,m) -> return $ toByteString $ b
 
-doTemplate = undefined
---doTemplate :: Text -> EitherT ServantErr (Handler App App) ()
---doTemplate name = undefined --lift $ render "test" >> return ()
+
+data App = App {
+    _heist :: Snaplet (Heist App)
+  , _sess  :: Snaplet SessionManager
+  , _auth  :: Snaplet (AuthManager App)
+  }
+makeLenses ''App
+
+helloH' :: Text -> Maybe Bool -> EitherT ServantErr (Handler App App) Greet
+helloH' name _ = lift $ with auth $ do
+  cu <- currentUser
+  return (Greet $ "Hi from snaplet, " <> name <> ". Login is " <> maybe "No login" (pack . show) cu)
+
+
 
 testApi :: Proxy TestApi
 testApi = Proxy
@@ -73,9 +103,10 @@ testApi = Proxy
 --
 -- Each handler runs in the 'EitherT ServantErr IO' monad.
 
+
 --server :: MonadSnap m => Server TestApi m
 server :: Server TestApi (Handler App App)
-server = helloH' :<|> postGreetH :<|> deleteGreetH :<|> doTemplate
+server = helloH' :<|> postGreetH :<|> deleteGreetH -- :<|> doTemplate
 
   where helloH :: MonadSnap m => Text -> Maybe Bool -> EitherT ServantErr m Greet
         helloH name Nothing = helloH name (Just False)
@@ -99,10 +130,6 @@ server = helloH' :<|> postGreetH :<|> deleteGreetH :<|> doTemplate
 test :: Application (Handler App App)
 test = serve testApi server
 
-data App = App {
-  _heist :: Snaplet (Heist App)
-  }
-makeLenses ''App
 
 instance HasHeist App where
   heistLens = subSnaplet heist
@@ -110,9 +137,21 @@ instance HasHeist App where
 initApp :: SnapletInit App App
 initApp = makeSnaplet "myapp" "An example app in servant" Nothing $ do
   h <- nestSnaplet "" heist $ heistInit "templates"
+  s <- nestSnaplet "sess" sess $ initCookieSessionManager "site_key.txt" "sess" (Just 3600)
+  a <- nestSnaplet "" auth $ initJsonFileAuthManager defAuthSettings sess "users.json"
+  addRoutes [("t", render "test" >> return ())]
   wrapSite (\site -> applicationToSnap test)
-  return $ App h
+  return $ App h s a
 
+initApp' :: SnapletInit App App
+initApp' = makeSnaplet "myapp2" "an example without servant" Nothing $ do
+  h <- nestSnaplet "" heist $ heistInit "templates"
+  s <- nestSnaplet "sess" sess $ initCookieSessionManager "site_key.txt" "sess" (Just 3600)
+  a <- nestSnaplet "" auth $ initJsonFileAuthManager defAuthSettings sess "users.json"
+  addRoutes [("t", render "test" >> return ())]
+  return $ App h s a
+
+snapCfg = setPort 8001 mempty
 -- Run the server.
 --
 -- 'run' comes from Network.Wai.Handler.Warp
@@ -121,6 +160,7 @@ initApp = makeSnaplet "myapp" "An example app in servant" Nothing $ do
 --                     (setPort port mempty :: Config Snap ())
 --                     (applicationToSnap test :: Snap ())
 
+runTestServer' :: Int -> IO ()
 runTestServer' port = serveSnaplet (setPort port mempty )
                       initApp
 

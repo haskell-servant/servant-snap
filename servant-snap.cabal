@@ -81,9 +81,11 @@ executable greet
   default-language: Haskell2010
   build-depends:
       base
+    , blaze-builder
     , bytestring
     , either
     , errors
+    , heist
     , lens
     , servant
     , servant-blaze
