@@ -109,10 +109,10 @@ import           Snap.Snaplet
 --
 
 serve
-  :: (HasServer layout)
+  :: (HasServer layout, MonadSnap m)
   => Proxy layout
-  -> Server layout
-  -> Application
+  -> Server layout m
+  -> Application m
 serve p server = toApplication (runRouter (route p (return (RR (Right server)))))
 
 

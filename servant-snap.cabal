@@ -82,12 +82,18 @@ executable greet
   build-depends:
       base
     , bytestring
+    , either
+    , errors
+    , lens
     , servant
+    , servant-blaze
     , servant-snap
     , aeson
+    , snap
     , snap-core
     , snap-server
     , text
+    , transformers
 
 test-suite spec
   type: exitcode-stdio-1.0

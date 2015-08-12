@@ -42,9 +42,9 @@ import Snap.Internal.Iteratee.Debug as ID
 
 import Debug.Trace
 
-type RoutingApplication =
+type RoutingApplication m =
      Request -- ^ the request, the field 'pathInfo' may be modified by url routing
-  -> (RouteResult Response -> Snap Response) -> Snap Response
+  -> (RouteResult Response -> m Response) -> m Response
 
 
 -- | A wrapper around @'Either' 'RouteMismatch' a@.
@@ -83,7 +83,7 @@ instance Monoid RouteMismatch where
   mappend = max
 
 
-toApplication :: RoutingApplication -> Application
+toApplication :: MonadSnap m => RoutingApplication m -> Application m
 toApplication ra request respond = do
   r <- ra request (routingRespond . routeResult)
   respond r
@@ -111,10 +111,10 @@ responseLBS (Status code msg) hs body =
     . setResponseBody (I.enumBuilder . fromLazyByteString $ body)
     $ emptyResponse
 
-runAction :: Snap (RouteResult (EitherT ServantErr Snap a))
-          -> (RouteResult Response -> Snap r)
+runAction :: MonadSnap m => m (RouteResult (EitherT ServantErr m a))
+          -> (RouteResult Response -> m r)
           -> (a -> RouteResult Response)
-          -> Snap r
+          -> m r
 runAction action respond k = do
   r <- action
   go r
@@ -126,7 +126,7 @@ runAction action respond k = do
         Left err -> succeedWith $ responseServantErr err
     go (RR (Left err)) = respond $ failWith err
 
-feedTo :: Snap (RouteResult (a -> b)) -> a -> Snap (RouteResult b)
+feedTo :: MonadSnap m => m (RouteResult (a -> b)) -> a -> m (RouteResult b)
 feedTo f x = (($ x) <$>) <$> f
 
 extractL :: RouteResult (a :<|> b) -> RouteResult a

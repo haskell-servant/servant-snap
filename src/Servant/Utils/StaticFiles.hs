@@ -13,7 +13,7 @@ import           Filesystem.Path.CurrentOS         (decodeString)
 import           Servant.API.Raw                   (Raw)
 import           Servant.Server                    (Server)
 import           Servant.Server.Internal.SnapShims
-import           Snap.Core                         (liftSnap)
+import           Snap.Core
 import qualified Snap.Util.FileServe               as Snap
 
 -- | Serve anything under the specified directory as a 'Raw' endpoint.
@@ -36,7 +36,7 @@ import qualified Snap.Util.FileServe               as Snap
 -- behind a /\/static\// prefix. In that case, remember to put the 'serveDirectory'
 -- handler in the last position, because /servant/ will try to match the handlers
 -- in order.
-serveDirectory :: FilePath -> Server Raw
-serveDirectory fp = snapToApplication $ Snap.serveDirectory fp
+serveDirectory :: FilePath -> Server Raw Snap
+serveDirectory fp = undefined -- XXX TODO snapToApplication . liftSnap $ Snap.serveDirectory fp
   -- (snapToApplication (Snap.serveDirectory fp) req handler)
     --staticApp . defaultFileServerSettings . addTrailingPathSeparator

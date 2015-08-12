@@ -8,14 +8,14 @@ import           Data.IORef
 import           Snap.Core
 
 
-type Application = Request -> (Response -> Snap Response) -> Snap Response
+type Application m = Request -> (Response -> m Response) -> m Response
 
-snapToApplication :: Snap () -> Application
+snapToApplication :: MonadSnap m => m () -> Application m
 snapToApplication snapAction req respond = do
   putRequest req
   snapAction >> getResponse >>= respond
-  
-applicationToSnap :: Application -> Snap ()
+
+applicationToSnap :: MonadSnap m => Application m -> m ()
 applicationToSnap app = do
   req <- getRequest
   r <- liftIO (putStrLn "APPLICATION TO SNAP")  >> app req return
