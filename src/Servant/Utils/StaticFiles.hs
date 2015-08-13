@@ -1,4 +1,6 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 -- | This module defines a sever-side handler that lets you serve static files.
 --
 -- - 'serveDirectory' lets you serve anything that lives under a particular
@@ -7,10 +9,11 @@ module Servant.Utils.StaticFiles (
   serveDirectory,
  ) where
 
+import           Control.Monad.Trans.Class         (lift)
 import           System.FilePath                   (addTrailingPathSeparator)
 --import Network.Wai.Application.Static (staticApp, defaultFileServerSettings)
 import           Filesystem.Path.CurrentOS         (decodeString)
-import           Servant.API.Raw                   (Raw)
+import           Servant.API.Raw                   (Raw(..))
 import           Servant.Server                    (Server)
 import           Servant.Server.Internal.SnapShims
 import           Snap.Core
@@ -36,7 +39,7 @@ import qualified Snap.Util.FileServe               as Snap
 -- behind a /\/static\// prefix. In that case, remember to put the 'serveDirectory'
 -- handler in the last position, because /servant/ will try to match the handlers
 -- in order.
-serveDirectory :: FilePath -> Server Raw Snap
-serveDirectory fp = undefined -- XXX TODO snapToApplication . liftSnap $ Snap.serveDirectory fp
+serveDirectory :: MonadSnap m => FilePath -> Server (Raw a (m ())) m
+serveDirectory fp = lift . liftSnap $ Snap.serveDirectory fp
   -- (snapToApplication (Snap.serveDirectory fp) req handler)
     --staticApp . defaultFileServerSettings . addTrailingPathSeparator

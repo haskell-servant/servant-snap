@@ -16,13 +16,12 @@ import           Data.Monoid
 import           Data.Proxy
 import           Data.Text
 import           GHC.Generics
---import Network.Wai
---import Network.Wai.Handler.Warp
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Text.Encoding as T
 import Heist
 import qualified Heist.Interpreted as I
 import           Servant.Server.Internal.SnapShims
+import           Servant.Utils.StaticFiles (serveDirectory)
 import           Servant.HTML.Blaze
 import           Snap.Core
 import           Snap.Snaplet
@@ -56,6 +55,8 @@ type TestApi =
 
        -- DELETE /greet/:greetid
   :<|> "greet" :> Capture "greetid" Text :> Delete '[JSON] ()
+
+  :<|> "files" :> Raw (Handler App App) (Handler App App ())
   :<|> "doraw" :> Raw (Handler App App) (Handler App App ())
 
   -- :<|> "template" :> Capture "name" Text :> Get '[HTML] (BS.ByteString)
@@ -109,7 +110,7 @@ testApi = Proxy
 
 --server :: MonadSnap m => Server TestApi m
 server :: Server TestApi (Handler App App)
-server = helloH' :<|> postGreetH :<|> deleteGreetH :<|> doRaw
+server = helloH' :<|> postGreetH :<|> deleteGreetH :<|> serveDirectory "static" :<|> doRaw -- :<|> (serveDirectory "static")
 
   where helloH :: MonadSnap m => Text -> Maybe Bool -> EitherT ServantErr m Greet
         helloH name Nothing = helloH name (Just False)

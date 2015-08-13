@@ -22,7 +22,7 @@ module Servant.Server.Internal
 import           Control.Applicative         ((<$>))
 import           Control.Monad.Trans.Either  (EitherT(..))
 import           Control.Monad.Trans.Class   (lift)
-import qualified Data.ByteString             as B
+import qualified Data.ByteString.Char8       as B
 import qualified Data.ByteString.Lazy        as BL
 import           Data.CaseInsensitive        (mk)
 import qualified Data.Map                    as M
@@ -654,12 +654,12 @@ instance (ToRawApplication m a, a ~ m ()) => HasServer (Raw m a) where
         --runApp <- app request ((liftSnap <$> respond) . succeedWith)
         --let b = runApp :: Int
 
-unEitherT :: Monad m => EitherT ServantErr m a -> m a
+unEitherT :: MonadSnap m => EitherT ServantErr m a -> m () -- TODO FIX!
 unEitherT act = do
   r <- runEitherT act
   case r of
-    Left _ -> error "uneitherT"
-    Right a -> return a
+    Left e  -> writeBS (B.pack (show e))
+    Right a -> return a >> return ()
 
 -- | If you use 'ReqBody' in one of the endpoints for your API,
 -- this automatically requires your server-side handler to be a function
