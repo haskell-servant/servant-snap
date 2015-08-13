@@ -109,7 +109,7 @@ testApi = Proxy
 
 --server :: MonadSnap m => Server TestApi m
 server :: Server TestApi (Handler App App)
-server = helloH' :<|> postGreetH :<|> deleteGreetH :<|> (Raw $ writeBS "Hello") -- :<|> doTemplate
+server = helloH' :<|> postGreetH :<|> deleteGreetH :<|> doRaw
 
   where helloH :: MonadSnap m => Text -> Maybe Bool -> EitherT ServantErr m Greet
         helloH name Nothing = helloH name (Just False)
@@ -121,6 +121,10 @@ server = helloH' :<|> postGreetH :<|> deleteGreetH :<|> (Raw $ writeBS "Hello") 
         postGreetH greet = return greet
 
         deleteGreetH _ = return ()
+        doRaw = lift $ with auth $ do
+          u <- currentUser
+          let spl = "tName" ## I.textSplice (maybe "NoLogin" (pack . show) u)
+          renderWithSplices "test" spl
         -- nodeal = return $ Greet "NoDeal"
         --justReq = writeBS "Hello"
         --testRaw :: Application m

@@ -21,6 +21,7 @@ module Servant.Server.Internal
 
 import           Control.Applicative         ((<$>))
 import           Control.Monad.Trans.Either  (EitherT(..))
+import           Control.Monad.Trans.Class   (lift)
 import qualified Data.ByteString             as B
 import qualified Data.ByteString.Lazy        as BL
 import           Data.CaseInsensitive        (mk)
@@ -619,24 +620,12 @@ instance (KnownSymbol sym, HasServer sublayout)
                     | otherwise = False
 
 
--- m :: (Handler App App)   a :: (Handler App App ())
 class ToRawApplication m a where
   toRawApplication :: a -> Application m
 
 instance (MonadSnap m, a ~ m ()) => ToRawApplication (m) a where
    toRawApplication app = snapToApplication app
 
---class ToRawApplication a where
---   toRawApplication :: Proxy m -> a -> Application m
-
---instance ToRawApplication (Application m) where
---  toRawApplication (p :: Proxy m) (app :: Application m) = app
-
---class ToRawApplication a where
---  toRawApplication :: a -> Application m
-
---instance ToRawApplication (Application m) where
---  toRawApplication = id
 
 -- | Just pass the request to the underlying application and serve its response.
 --
@@ -650,19 +639,27 @@ instance (MonadSnap m, a ~ m ()) => ToRawApplication (m) a where
 --instance ToRawApplication a => HasServer (Raw m a) where
 --instance forall m a n.(MonadSnap m, m ~ n) => HasServer (Raw m (n a)) where
 instance (ToRawApplication m a, a ~ m ()) => HasServer (Raw m a) where
+--instance ToRawApplication a => HasServer (Raw m a) where
 
   --type ServerT (Raw n a) m = Raw n (Application m)
-  type ServerT (Raw m a) n = Raw n a
+  type ServerT (Raw m a) n = n ()
 
   -- route :: Proxy layout -> IO (RouteResult (Server layout)) -> Router
   route Proxy rawApplication = LeafRouter $ \ request respond -> do
     r <- rawApplication
     case r of
       RR (Left err)      -> respond $ failWith err
-      RR (Right (rawApp)) -> (toRawApplication rawApp) request (respond . succeedWith)
+      RR (Right (rawApp)) -> (toRawApplication (unEitherT rawApp)) request (respond . succeedWith)
       --RR (Right (Raw a)) -> (toRawApplication (Proxy :: Proxy m) app) request ( respond . succeedWith) -- XXX TODO
         --runApp <- app request ((liftSnap <$> respond) . succeedWith)
         --let b = runApp :: Int
+
+unEitherT :: Monad m => EitherT ServantErr m a -> m a
+unEitherT act = do
+  r <- runEitherT act
+  case r of
+    Left _ -> error "uneitherT"
+    Right a -> return a
 
 -- | If you use 'ReqBody' in one of the endpoints for your API,
 -- this automatically requires your server-side handler to be a function
