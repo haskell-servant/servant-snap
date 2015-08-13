@@ -6,7 +6,6 @@ import           Data.List             (unfoldr)
 import           Data.Text             (Text)
 import qualified Data.Text             as T
 import qualified Data.Text.Encoding    as T
---import           Network.Wai                 (Request, pathInfo)
 import           Snap.Core
 
 import           Debug.Trace
@@ -16,17 +15,19 @@ traceShow' a = traceShow a a
 rqPath :: Request -> B.ByteString
 rqPath r = B.append (rqContextPath r) (rqPathInfo r)
 
+--pathInfo :: Request -> [Text]
+--pathInfo = traceShow' . tail . T.splitOn "/" . T.decodeUtf8 . rqPath
+
 pathInfo :: Request -> [Text]
-pathInfo = traceShow' . tail . T.splitOn "/" . T.decodeUtf8 . rqPath
+pathInfo = traceShow' . T.splitOn "/" . T.decodeUtf8 . rqPathInfo
+
 
 pathSafeTail :: Request -> ([B.ByteString], [B.ByteString])
 pathSafeTail r =
   let contextParts = B.split '/' (rqContextPath r)
       restParts    = B.split '/' (rqPathInfo r)
-  in case (contextParts, restParts) of
-       ([],[])   ->  ([], [])
-       (_:xs, y)  -> (xs, y)
-       ([], _:ys) -> ([], ys)
+  in (contextParts, drop 1 restParts)
+
 
 -- TODO: Is this right? Does it drop leading/trailing slashes?
 reqSafeTail :: Request -> Request

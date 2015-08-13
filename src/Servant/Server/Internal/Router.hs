@@ -53,7 +53,7 @@ runRouter :: MonadSnap m => Router Request (RoutingApplication m) m -> RoutingAp
 runRouter (WithRequest router) request respond =
   runRouter (router request) (traceStack (("WITHREQUEST req: "++) $ show request) request) respond
 runRouter (StaticRouter table) request respond =
-  case processedPathInfo request of
+  case processedPathInfo (traceStack (("STATICROUTER req: "++) $ show request) request) of
     first : _
       | Just router <- M.lookup first table
       -> let request' = reqSafeTail request
