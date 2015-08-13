@@ -1,3 +1,7 @@
+HEAD
+----
+* Add `instance Server Raw` for servant Raw changes
+
 0.4.1
 -----
 * Bump attoparsec upper bound to < 0.14

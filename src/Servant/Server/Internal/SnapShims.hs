@@ -15,6 +15,11 @@ snapToApplication snapAction req respond = do
   putRequest req
   snapAction >> getResponse >>= respond
 
+snapToApplication' :: MonadSnap m => m a -> Application m
+snapToApplication' snapAction req respond = do
+  putRequest req
+  snapAction >> getResponse >>= respond
+
 applicationToSnap :: MonadSnap m => Application m -> m ()
 applicationToSnap app = do
   req <- getRequest

@@ -25,6 +25,7 @@ import qualified Data.ByteString.Lazy        as BL
 import           Data.CaseInsensitive        (mk)
 import qualified Data.Map                    as M
 import           Data.Maybe                  (catMaybes, fromMaybe, mapMaybe)
+import           Data.Proxy
 import           Data.String                 (fromString)
 import           Data.String.Conversions     (cs, (<>))
 import           Data.Text                   (Text)
@@ -33,19 +34,16 @@ import           Data.Text.Encoding          (decodeUtf8, encodeUtf8)
 import           Data.Typeable
 import           GHC.TypeLits                (KnownSymbol, symbolVal)
 import           Network.HTTP.Types          (QueryText, parseQueryText)
-import Network.Wai (rawQueryString) --TODO temporary
---import           Network.Wai                 (Application, lazyRequestBody,
---                                              rawQueryString, requestHeaders,
---                                              requestMethod, responseLBS)
+import           Network.Wai (rawQueryString) --TODO temporary
 import           Snap.Core                   hiding (Headers, getHeaders,
                                               getResponse, route)
 import           Snap.Snaplet
 import           Servant.API                 ((:<|>) (..), (:>), Capture,
                                                Delete, Get, Header,
-                                              MatrixFlag, MatrixParam, MatrixParams,
-                                              Patch, Post, Put, QueryFlag,
-                                              QueryParam, QueryParams, Raw,
-                                              ReqBody)
+                                              MatrixFlag, MatrixParam,
+                                              MatrixParams, Patch, Post, Put,
+                                              QueryFlag, QueryParam,
+                                              QueryParams, Raw(..), ReqBody)
 import           Servant.API.ContentTypes    (AcceptHeader (..),
                                               AllCTRender (..),
                                               AllCTUnrender (..))
@@ -619,6 +617,25 @@ instance (KnownSymbol sym, HasServer sublayout)
           examine v | v == "true" || v == "1" || v == "" = True
                     | otherwise = False
 
+
+--class ToRawApplication a where
+--  toRawApplication :: a -> Application m
+
+--instance MonadSnap m => ToRawApplication (Application m) where
+--   toRawApplication app = app
+
+--class ToRawApplication a where
+--   toRawApplication :: Proxy m -> a -> Application m
+
+--instance ToRawApplication (Application m) where
+--  toRawApplication (p :: Proxy m) (app :: Application m) = app
+
+class ToRawApplication a where
+  toRawApplication :: MonadSnap m => m a -> m a
+
+instance MonadSnap m => ToRawApplication (m a) where
+  toRawApplication a =  (a)
+
 -- | Just pass the request to the underlying application and serve its response.
 --
 -- Example:
@@ -627,16 +644,18 @@ instance (KnownSymbol sym, HasServer sublayout)
 -- >
 -- > server :: Server MyApi
 -- > server = serveDirectory "/var/www/images"
-instance HasServer Raw where
+--instance (ToRawApplication a, MonadSnap m) => HasServer (Raw m a) where
+instance ToRawApplication a => HasServer (Raw m a) where
 
-  type ServerT Raw m = Snap ()
+  type ServerT (Raw m a) n = Raw n a
 
   -- route :: Proxy layout -> IO (RouteResult (Server layout)) -> Router
   route Proxy rawApplication = LeafRouter $ \ request respond -> do
     r <- rawApplication
     case r of
-      RR (Left err)  -> respond $ failWith err
-      RR (Right app) -> undefined -- app request ( respond . succeedWith) -- XXX TODO
+      RR (Left err)      -> respond $ failWith err
+      RR (Right (Raw (a))) -> (snapToApplication' $ toRawApplication a) request (respond . succeedWith)
+      --RR (Right (Raw a)) -> (toRawApplication (Proxy :: Proxy m) app) request ( respond . succeedWith) -- XXX TODO
         --runApp <- app request ((liftSnap <$> respond) . succeedWith)
         --let b = runApp :: Int
 
