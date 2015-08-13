@@ -56,6 +56,7 @@ type TestApi =
 
        -- DELETE /greet/:greetid
   :<|> "greet" :> Capture "greetid" Text :> Delete '[JSON] ()
+  :<|> "doraw" :> Raw (Handler App App) (Handler App App ())
 
   -- :<|> "template" :> Capture "name" Text :> Get '[HTML] (BS.ByteString)
 
@@ -91,6 +92,8 @@ helloH' name _ = lift $ with auth $ do
   cu <- currentUser
   return (Greet $ "Hi from snaplet, " <> name <> ". Login is " <> maybe "No login" (pack . show) cu)
 
+--doRaw :: EitherT ServantErr (Handler App App) ()
+--doRaw = lift $ writeBS "Hello frow raw!"
 
 
 testApi :: Proxy TestApi
@@ -106,7 +109,7 @@ testApi = Proxy
 
 --server :: MonadSnap m => Server TestApi m
 server :: Server TestApi (Handler App App)
-server = helloH' :<|> postGreetH :<|> deleteGreetH -- :<|> doTemplate
+server = helloH' :<|> postGreetH :<|> deleteGreetH :<|> (Raw $ writeBS "Hello") -- :<|> doTemplate
 
   where helloH :: MonadSnap m => Text -> Maybe Bool -> EitherT ServantErr m Greet
         helloH name Nothing = helloH name (Just False)
