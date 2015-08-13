@@ -23,7 +23,7 @@ snapToApplication' snapAction req respond = do
 applicationToSnap :: MonadSnap m => Application m -> m ()
 applicationToSnap app = do
   req <- getRequest
-  r <- liftIO (putStrLn "APPLICATION TO SNAP")  >> app req return
+  r <- app req return
   putResponse r
 
 data Status = Status {

@@ -10,11 +10,14 @@ module Servant.ServerSpec where
 
 
 import           Control.Monad              (forM_, when)
+import           Control.Monad.Trans.Class  (lift)
 import           Control.Monad.Trans.Either (EitherT, left)
 import           Control.Monad.IO.Class     (liftIO)
 import           Data.Aeson                 (FromJSON, ToJSON, decode', encode)
+import qualified Data.ByteString.Char8      as B8
 import           Data.ByteString.Conversion ()
 import           Data.Char                  (toUpper)
+import qualified Data.Map                   as Map
 import           Data.Monoid                ((<>))
 import           Data.Proxy                 (Proxy (Proxy))
 import           Data.String                (fromString)
@@ -24,10 +27,13 @@ import           GHC.Generics               (Generic)
 import           Network.HTTP.Types         (hAccept, hContentType,
                                              methodDelete, methodGet,
                                              methodPatch, methodPost, methodPut,
-                                             ok200, parseQuery, status409)
+                                             parseQuery, status409)
 --import           Network.Wai                (Application, Request, pathInfo,
 --                                             queryString, rawQueryString,
 --                                             responseLBS)
+import           Snap.Core
+import           Snap.Http.Server
+import           Snap.Snaplet
 import           Snap.Test                  hiding (with, get)
 --import           Network.Wai.Test           (defaultRequest, request,
 --                                             runSession, simpleBody)
@@ -45,8 +51,12 @@ import           Servant.API                ((:<|>) (..), (:>),
                                              Post, Put, QueryFlag, QueryParam,
                                              QueryParams, Raw, ReqBody)
 import           Servant.Server             (Server, serve, ServantErr(..), err404)
+import           Servant.Server.Internal    (HasServer)
+import           Servant.Server.Internal.SnapShims
 import           Servant.Server.Internal.RoutingApplication
 import           Servant.Server.Internal.PathInfo (pathInfo)
+
+import Debug.Trace
 
 
 -- * test data types
@@ -78,17 +88,29 @@ jerry = Animal "Mouse" 4
 tweety :: Animal
 tweety = Animal "Bird" 2
 
+data App = App
+
+app :: SnapletInit App App
+app = makeSnaplet "servantsnap" "A test app for servant-snap" Nothing $ do
+  --wrapSite (\site -> applicationToSnap (serve captureApi captureServer) )
+  return App
+
+routes :: HasServer api
+       => Proxy api
+       -> Server api (Handler App App)
+       -> [(B8.ByteString, Handler App App ())]
+routes p s = [("", applicationToSnap (serve p s))]
 
 -- * specs
 
 spec :: Spec
 spec = do
   captureSpec
-  -- getSpec
+  getSpec
   -- postSpec
   -- putSpec
   -- patchSpec
-  -- queryParamSpec
+  queryParamSpec
   -- matrixParamSpec
   -- headerSpec
   -- rawSpec
@@ -97,40 +119,49 @@ spec = do
   -- errorsSpec
   -- responseHeadersSpec
 
+traceShow' a = traceShow a a
 
 type CaptureApi = Capture "legs" Integer :> Get '[JSON] Animal
+
 captureApi :: Proxy CaptureApi
 captureApi = Proxy
-captureServer :: Integer -> EitherT ServantErr IO Animal
+
+captureServer :: Integer -> EitherT ServantErr (Handler App App) Animal
 captureServer legs = case legs of
   4 -> return jerry
   2 -> return tweety
   _ -> left err404
 
+type CaptureApi2 = Capture "captured" String :> Raw (Handler App App) (Handler App App ())
+captureApi2 :: Proxy CaptureApi2
+captureApi2 = Proxy
+
+captureServer2 :: String  -> Server (Raw a (Handler App App ())) (Handler App App)
+captureServer2 _ = lift $ do
+  r <- getRequest
+  writeBS (rqPathInfo r)
+
 captureSpec :: Spec
 captureSpec = do
-  describe "Servant.API.Capture" $ do
-    before (return (serve captureApi captureServer)) $ do
+  snap (route (routes captureApi captureServer)) app $ do
+   describe "Servant.API.Capture" $ do
 
       it "can capture parts of the 'pathInfo'" $ do
         response <- get "/2"
         case response of
           Json bs -> do
-            d <- liftIO $ decode' bs
+            let d = decode' bs
             d `shouldEqual` Just tweety
           _       -> setResult (Fail "Should have been json body")
 
       it "returns 404 if the decoding fails" $ do
         get "/notAnInt" >>= should404
 
-    before (return (serve
-        (Proxy :: Proxy (Capture "captured" String :> Raw))
-        (\ "captured" request_ respond ->
-            respond $ responseLBS ok200 [] (cs $ show $ pathInfo request_)))) $ do
+  snap (route (routes captureApi2 captureServer2)) app $ do
+    describe "Servant.API.Capture" $ do
       it "strips the captured path snippet from pathInfo" $ do
-        get "/captured/foo" >>= shouldEqual (fromString (show ["foo" :: String]))
+        get "/captured/foo" >>= shouldEqual (Html "foo")
 
-{-
 
 type GetApi = Get '[JSON] Person
         :<|> "empty" :> Get '[] ()
@@ -143,28 +174,25 @@ should405 (Other 405) = setResult Success
 should405 _ = setResult (Fail "Should have 405'd")
 
 getSpec :: Spec
-getSpec = do
+getSpec = snap (route (routes getApi (return alice :<|> return ()))) app $ do
   describe "Servant.API.Get" $ do
-    let server = return alice :<|> return ()
-    before (return $ serve getApi server) $ do
 
       it "allows to GET a Person" $ do
         response <- get "/"
-        return response >>= should200
         case response of
           Json bs -> do
-            liftIO $ decode' bs >>= shouldEqual (Just alice)
+            decode' bs `shouldEqual`  (Just alice)
+          _ -> setResult (Fail "Should have been json body")
 
       it "throws 405 (wrong method) on POSTs" $ do
-        post "/" "" >>= should405
-        post "/empty" "" >>= should405
+        postJson "/" ("" :: String) >>= should405
+        postJson "/empty" ("" :: String) >>= should405
 
       it "returns 204 if the type is '()'" $ do
-        get "empty" `shouldRespondWith` ""{ matchStatus = 204 }
+        get "empty" >>= shouldEqual (Other 204) --`shouldRespondWith` ""{ matchStatus = 204 }
 
       it "returns 415 if the Accept header is not supported" $ do
-        Test.Hspec.Wai.request methodGet "" [(hAccept, "crazy/mime")] ""
-          `shouldRespondWith` 415
+        get' "" (Map.fromList [("Accept", ["crazy/mime"])]) >>= shouldEqual (Other 415)
 
 
 
@@ -175,7 +203,7 @@ type QueryParamApi = QueryParam "name" String :> Get '[JSON] Person
 queryParamApi :: Proxy QueryParamApi
 queryParamApi = Proxy
 
-qpServer :: Server QueryParamApi
+qpServer :: Server QueryParamApi (Handler App App)
 qpServer = queryParamServer :<|> qpNames :<|> qpCapitalize
 
   where qpNames (_:name2:_) = return alice { name = name2 }
@@ -188,20 +216,21 @@ qpServer = queryParamServer :<|> qpNames :<|> qpCapitalize
         queryParamServer Nothing = return alice
 
 queryParamSpec :: Spec
-queryParamSpec = do
+queryParamSpec = snap (route (routes queryParamApi qpServer)) app $ do
   describe "Servant.API.QueryParam" $ do
-      it "allows to retrieve simple GET parameters" $
-        (flip runSession) (serve queryParamApi qpServer) $ do
+      it "allows to retrieve simple GET parameters" $ do
           let params1 = "?name=bob"
-          response1 <- Network.Wai.Test.request defaultRequest{
-            rawQueryString = params1,
-            queryString = parseQuery params1
-           }
-          liftIO $ do
-            decode' (simpleBody response1) `shouldBe` Just alice{
-              name = "bob"
-             }
+          --response1 <- Network.Wai.Test.request defaultRequest{
+          --  rawQueryString = params1,
+          --  queryString = parseQuery params1
+          -- }
+          response1 <- get "?name=bob"
+          case response1 of
+            Json bs ->
+              decode' bs `shouldEqual` (Just $ alice{name = "bob"})
+            _ -> setResult (Fail "Should have been json body")
 
+{-
       it "allows to retrieve lists in GET parameters" $
         (flip runSession) (serve queryParamApi qpServer) $ do
           let params2 = "?names[]=bob&names[]=john"
@@ -250,6 +279,8 @@ queryParamSpec = do
             decode' (simpleBody response3') `shouldBe` Just alice{
               name = "Alice"
              }
+
+
 
 type MatrixParamApi = "a" :> MatrixParam "name" String :> Get '[JSON] Person
                 :<|> "b" :> MatrixParams "names" String :> "bsub" :> MatrixParams "names" String :> Get '[JSON] Person
