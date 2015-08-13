@@ -140,7 +140,9 @@ initApp = makeSnaplet "myapp" "An example app in servant" Nothing $ do
   s <- nestSnaplet "sess" sess $ initCookieSessionManager "site_key.txt" "sess" (Just 3600)
   a <- nestSnaplet "" auth $ initJsonFileAuthManager defAuthSettings sess "users.json"
   addRoutes [("t", render "test" >> return ())]
-  wrapSite (\site -> applicationToSnap test)
+  addRoutes [("api", modifyRequest (\r -> r {rqContextPath = BS.drop 4 (rqContextPath r)}) >>
+                     applicationToSnap test)]
+  --wrapSite (\site -> applicationToSnap test)
   return $ App h s a
 
 initApp' :: SnapletInit App App
