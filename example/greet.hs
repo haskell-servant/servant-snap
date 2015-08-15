@@ -118,10 +118,11 @@ server = helloH' :<|> postGreetH :<|> deleteGreetH :<|> serveDirectory "static" 
         --helloH name (Just False) = writeBS ("Hello, " <> name)
         helloH name (Just True) = return . Greet . toUpper $ "Hello, " <> name
 
-        --postGreetH :: Greet -> EitherT ServantErr (Handler App App) Greet
+        postGreetH :: Greet -> EitherT ServantErr (Handler App App) Greet
         postGreetH greet = return greet
 
         deleteGreetH _ = return ()
+        doRaw :: Server (Raw (Handler App App) (Handler App App ())) (Handler App App)
         doRaw = lift $ with auth $ do
           u <- currentUser
           let spl = "tName" ## I.textSplice (maybe "NoLogin" (pack . show) u)
