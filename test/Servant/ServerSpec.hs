@@ -3,8 +3,9 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeOperators       #-}
-{-# LANGUAGE TypeSynonymInstances       #-}
-{-# LANGUAGE FlexibleInstances       #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE FlexibleContexts     #-}
 
 module Servant.ServerSpec where
 
@@ -26,24 +27,12 @@ import           Data.String.Conversions    (cs)
 import qualified Data.Text                  as T
 import qualified Data.Text.Encoding         as T
 import           GHC.Generics               (Generic)
---import           Network.HTTP.Types         (hAccept, hContentType,
---                                             methodDelete, methodGet,
---                                             methodPatch, methodPost, methodPut,
---                                             parseQuery, status409)
---import           Network.Wai                (Application, Request, pathInfo,
---                                             queryString, rawQueryString,
---                                             responseLBS)
 import           Snap.Core                  hiding (Headers, addHeader)
 import           Snap.Http.Server
 import           Snap.Snaplet
 import           Snap.Test                  hiding (with, get, addHeader, put)
---import           Network.Wai.Test           (defaultRequest, request,
---                                             runSession, simpleBody)
 import           Test.Hspec
 import           Test.Hspec.Core.Spec (Result(..))
--- import           Test.Hspec.Wai             (get, liftIO, matchHeaders,
---                                              matchStatus, post, request,
---                                              shouldRespondWith, with, (<:>))
 import           Test.Hspec.Snap            hiding (NotFound)
 import           Servant.API                ((:<|>) (..), (:>),
                                              addHeader, Capture,
@@ -117,9 +106,9 @@ spec = do
   headerSpec
   rawSpec
   unionSpec
-  -- prioErrorsSpec
+  prioErrorsSpec
   errorsSpec
-  -- responseHeadersSpec
+  responseHeadersSpec
 
 traceShow' a = traceShow a a
 
@@ -191,7 +180,7 @@ getSpec = snap (route (routes getApi (return alice :<|> return ()))) app $ do
         postJson "/empty" ("" :: String) >>= should405
 
       it "returns 204 if the type is '()'" $ do
-        get "empty" >>= shouldEqual (Other 204) --`shouldRespondWith` ""{ matchStatus = 204 }
+        get "empty" >>= shouldEqual (Other 204)
 
       it "returns 415 if the Accept header is not supported" $ do
         get' "" (Map.fromList [("Accept", ["crazy/mime"])]) >>= shouldEqual (Other 415)
@@ -229,11 +218,7 @@ queryParamSpec = snap (route (routes queryParamApi qpServer)) app $ do
 
       it "allows to retrieve lists in GET parameters" $ do
           let params2 = "?names[]=bob&names[]=john"
-          response2 <- get ("a" <> params2) --defaultRequest{
-            --rawQueryString = params2,
-            --queryString = parseQuery params2,
-            --pathInfo = ["a"]
-            --}
+          response2 <- get ("a" <> params2)
           case response2 of
             Json bs ->
               decode' bs `shouldEqual` Just alice{name="john"}
@@ -241,10 +226,6 @@ queryParamSpec = snap (route (routes queryParamApi qpServer)) app $ do
 
       it "allows to retrieve value-less GET parameters" $ do
           response3 <- get "b?capitalize"
-           --  rawQueryString = params3,
-           --  queryString = parseQuery params3,
-           --  pathInfo = ["b"]
-           -- }
           case response3 of
             Json bs ->
               decode' bs `shouldEqual` Just alice{name="ALICE"}
@@ -252,10 +233,6 @@ queryParamSpec = snap (route (routes queryParamApi qpServer)) app $ do
 
       it "allows to retrieve value-less GET parameters again" $ do -- TODO rename
           response3' <- get "b?capitalize"
-           --  rawQueryString = params3,
-           --  queryString = parseQuery params3,
-           --  pathInfo = ["b"]
-           -- }
           case response3' of
             Json bs ->
               decode' bs `shouldEqual` Just alice{name="ALICE"}
@@ -263,10 +240,6 @@ queryParamSpec = snap (route (routes queryParamApi qpServer)) app $ do
 
       it "allows to retrieve value-less GET parameters again" $ do -- TODO rename
           response3'' <- get "b?unknown="
-           --  rawQueryString = params3,
-           --  queryString = parseQuery params3,
-           --  pathInfo = ["b"]
-           -- }
           case response3'' of
             Json bs ->
               decode' bs `shouldEqual` Just alice{name="Alice"}
@@ -336,21 +309,12 @@ postSpec = snap (route (routes postApi pServer)) app $ do
 
       it "allows to POST a Person" $ do
         postJson "/" alice >>= (`shouldEqual` (Html "42"))
-        --myPost "/" (encode alice) `shouldRespondWith` "42"{
-        --  matchStatus = 201
-        -- }
 
       it "allows alternative routes if all have request bodies" $ do
         postJson "/bla" alice >>= (`shouldEqual` (Html "42"))
-        -- myPost "/bla" (encode alice) `shouldRespondWith` "42"{
-        --   matchStatus = 201
-        --  }
 
       it "handles trailing '/' gracefully" $ do
         postJson "/bla/" alice >>= (`shouldEqual` (Html "42"))
-        -- myPost "/bla/" (encode alice) `shouldRespondWith` "42"{
-        --   matchStatus = 201
-        --  }
 
       it "correctly rejects invalid request bodies with status 400" $ do
         postJson "/" ("some invalid body" :: String) >>= (`shouldEqual`  (Other 400))
@@ -359,7 +323,8 @@ postSpec = snap (route (routes postApi pServer)) app $ do
         postJson "empty" ("" :: String) >>= (`shouldEqual` (Other 204))
 
       it "responds with 415 if the requested media type is unsupported" $ do
-        post "/" (Map.fromList [("Content-Type",["application/nonsense"])]) >>= (`shouldEqual` (Other 415))
+        post "/" (Map.fromList [("Content-Type",["application/nonsense"])])
+          >>= (`shouldEqual` (Other 415))
 
 type PutApi =
        ReqBody '[JSON] Person :> Put '[JSON] Integer
@@ -599,11 +564,13 @@ responseHeadersSpec = snap (route (routes rhApi rhServer)) app $ do
     --     Test.Hspec.Wai.request method "" [(hAccept, "crazy/mime")] ""
     --       `shouldRespondWith` 415
 
-{-
 type PrioErrorsApi = ReqBody '[JSON] Person :> "foo" :> Get '[JSON] Integer
 
 prioErrorsApi :: Proxy PrioErrorsApi
 prioErrorsApi = Proxy
+
+peServer :: Server PrioErrorsApi (Handler App App)
+peServer = return . age
 
 -- | Test the relative priority of error responses from the server.
 --
@@ -612,44 +579,36 @@ prioErrorsApi = Proxy
 -- see a complaint about the request body unless the path actually matches.
 --
 prioErrorsSpec :: Spec
-prioErrorsSpec = describe "PrioErrors" $ do
-  let server = return . age
-  with (return $ serve prioErrorsApi server) $ do
-    let check (mdescr, method) path (cdescr, ctype, body) resp =
-          it fulldescr $
-            Test.Hspec.Wai.request method path [(hContentType, ctype)] body
-              `shouldRespondWith` resp
-          where
-            fulldescr = "returns " ++ show (matchStatus resp) ++ " on " ++ mdescr
-                     ++ " " ++ cs path ++ " (" ++ cdescr ++ ")"
+prioErrorsSpec = snap (route (routes prioErrorsApi peServer)) app $ do
 
-        get' = ("GET", methodGet)
-        put' = ("PUT", methodPut)
+  describe "PrioErrors" $ do
+
+    let --check :: T.Text
+        --      -> (String, [String], BL.ByteString)
+        --      -> TestResponse
+        --      -> SnapHspecM () TestResponse
+        check path (cdescr, ctype, body) resp =
+          it fulldescr $
+            put' path body (params [("Content-Type", ctype)]) >>= (`shouldEqual` resp)
+          where
+            fulldescr = "returns " ++ show resp ++ " on PUT"
+                     ++ " " ++ cs path ++ " (" ++ cdescr ++ ")"
 
         txt   = ("text"        , "text/plain;charset=utf8"      , "42"        )
         ijson = ("invalid json", "application/json;charset=utf8", "invalid"   )
-        vjson = ("valid json"  , "application/json;charset=utf8", encode alice)
+        vjson = ("valid json"  , "application/json;charset=utf8",
+                 T.decodeUtf8 . BL.toStrict $ encode alice)
 
-    check get' "/"    txt   404
-    check get' "/bar" txt   404
-    check get' "/foo" txt   415
-    check put' "/"    txt   404
-    check put' "/bar" txt   404
-    check put' "/foo" txt   405
-    check get' "/"    ijson 404
-    check get' "/bar" ijson 404
-    check get' "/foo" ijson 400
-    check put' "/"    ijson 404
-    check put' "/bar" ijson 404
-    check put' "/foo" ijson 405
-    check get' "/"    vjson 404
-    check get' "/bar" vjson 404
-    check get' "/foo" vjson 200
-    check put' "/"    vjson 404
-    check put' "/bar" vjson 404
-    check put' "/foo" vjson 405
+    check "/"    txt   (Other 404)
+    check "/bar" txt   (Other 404)
+    check "/foo" txt   (Other 405)
+    check "/"    ijson (Other 404)
+    check "/bar" ijson (Other 404)
+    check "/foo" ijson (Other 405)
+    check "/"    vjson (Other 404)
+    check "/bar" vjson (Other 404)
+    check "/foo" vjson (Other 405)
 
--}
 
 -- | Test server error functionality.
 errorsSpec :: Spec
