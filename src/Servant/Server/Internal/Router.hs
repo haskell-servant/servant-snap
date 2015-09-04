@@ -9,7 +9,6 @@ import           Servant.Server.Internal.PathInfo
 import           Servant.Server.Internal.RoutingApplication
 import           Snap.Core
 
-import Debug.Trace
 
 -- | Internal representation of a router.
 data Router req app m =
@@ -49,11 +48,13 @@ choice router1 (WithRequest router2) =
 choice router1 router2 = Choice router1 router2
 
 -- | Interpret a router as an application.
-runRouter :: MonadSnap m => Router Request (RoutingApplication m) m -> RoutingApplication m
+runRouter :: MonadSnap m
+          => Router Request (RoutingApplication m) m
+          -> RoutingApplication m
 runRouter (WithRequest router) request respond =
-  runRouter (router request) (traceStack (("WITHREQUEST req: "++) $ show request) request) respond
+  runRouter (router request) request respond
 runRouter (StaticRouter table) request respond =
-  case processedPathInfo (traceStack (("STATICROUTER req: "++) $ show request) request) of
+  case processedPathInfo request of
     first : _
       | Just router <- M.lookup first table
       -> let request' = reqSafeTail request
@@ -67,7 +68,7 @@ runRouter (DynamicRouter fun)  request respond =
     _ -> respond $ failWith NotFound
 runRouter (LeafRouter app)     request respond = app request respond
 runRouter (Choice r1 r2)       request respond =
-  runRouter r1 (traceShow (("CHOICE req: " ++) $ show request) request) $ \ mResponse1 ->
+  runRouter r1 request $ \ mResponse1 ->
     if isMismatch mResponse1
       then runRouter r2 request $ \ mResponse2 ->
              respond (mResponse1 <> mResponse2)

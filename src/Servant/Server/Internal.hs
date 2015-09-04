@@ -21,9 +21,7 @@ module Servant.Server.Internal
 
 import           Control.Applicative         ((<$>))
 import           Control.Monad.Trans.Either  (EitherT(..))
-import           Control.Monad.Trans.Class   (lift)
 import qualified Data.ByteString.Char8       as B
-import qualified Data.ByteString.Lazy        as BL
 import           Data.CaseInsensitive        (mk)
 import qualified Data.Map                    as M
 import           Data.Maybe                  (catMaybes, fromMaybe, mapMaybe)
@@ -33,13 +31,11 @@ import           Data.String.Conversions     (cs, (<>))
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           Data.Text.Encoding          (decodeUtf8, encodeUtf8)
-import           Data.Typeable
 import           GHC.TypeLits                (KnownSymbol, symbolVal)
 import           Network.HTTP.Types          (QueryText, parseQueryText)
-import           Network.Wai (rawQueryString) --TODO temporary
 import           Snap.Core                   hiding (Headers, getHeaders,
-                                              getResponse, route)
-import           Snap.Snaplet
+                                              getResponse, headers, route,
+                                              method)
 import           Servant.API                 ((:<|>) (..), (:>), Capture,
                                                Delete, Get, Header,
                                               MatrixFlag, MatrixParam,

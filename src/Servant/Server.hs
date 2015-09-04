@@ -75,13 +75,11 @@ module Servant.Server
 
   ) where
 
-import           Control.Monad.IO.Class            (liftIO)
 import           Data.Proxy                        (Proxy)
 import           Servant.Server.Internal
 import           Servant.Server.Internal.Enter
 import           Servant.Server.Internal.SnapShims
 import           Snap.Core                         hiding (route)
-import           Snap.Snaplet
 
 
 -- * Implementing Servers

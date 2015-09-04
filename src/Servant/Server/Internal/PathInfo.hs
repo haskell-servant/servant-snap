@@ -8,18 +8,12 @@ import qualified Data.Text             as T
 import qualified Data.Text.Encoding    as T
 import           Snap.Core
 
-import           Debug.Trace
-
-traceShow' a = traceShow a a
 
 rqPath :: Request -> B.ByteString
 rqPath r = B.append (rqContextPath r) (rqPathInfo r)
 
---pathInfo :: Request -> [Text]
---pathInfo = traceShow' . tail . T.splitOn "/" . T.decodeUtf8 . rqPath
-
 pathInfo :: Request -> [Text]
-pathInfo = traceShow' . T.splitOn "/" . T.decodeUtf8 . rqPathInfo
+pathInfo = T.splitOn "/" . T.decodeUtf8 . rqPathInfo
 
 
 pathSafeTail :: Request -> ([B.ByteString], [B.ByteString])

@@ -7,7 +7,6 @@ module Servant.Server.Internal.RoutingApplication where
 
 import           Blaze.ByteString.Builder.ByteString (fromLazyByteString)
 import           Control.Applicative                 (Applicative, (<$>))
-import Control.Monad (liftM)
 import           Control.Monad.IO.Class              (MonadIO (..), liftIO)
 import           Control.Monad.Trans.Class           (lift)
 import           Control.Monad.Trans.Either          (EitherT, runEitherT)
@@ -15,32 +14,20 @@ import qualified Data.ByteString                     as B
 import qualified Data.ByteString.Char8               as B8
 import qualified Data.ByteString.Lazy                as BL
 import           Data.CaseInsensitive                (CI)
-import           Data.IORef                          (IORef, newIORef,
-                                                      readIORef, writeIORef)
+import           Data.IORef                          (readIORef, writeIORef)
 import qualified Data.List                           as L
 import           Data.Maybe                          (fromMaybe)
-import           Data.Monoid                         (Monoid, mappend, mempty,
-                                                      (<>))
+import           Data.Monoid                         ((<>))
 import           Data.String                         (fromString)
 import           GHC.Int                             (Int64)
---import           Network.HTTP.Types                  hiding (Header,
---                                                      ResponseHeaders)
--- import qualified Network.Wai                         as Wai (Application,
---                                                              Request, Response,
---                                                              ResponseReceived,
---                                                              requestBody,
---                                                              responseLBS,
---                                                              strictRequestBody)
 import           Servant.API                         ((:<|>) (..))
 import           Servant.Server.Internal.ServantErr
 import           Servant.Server.Internal.SnapShims
 import           Snap.Core
 import           Snap.Internal.Http.Types
-import           Snap.Internal.Iteratee.Debug        (iterateeDebugWrapper)
 import qualified Snap.Iteratee                       as I
 import Snap.Internal.Iteratee.Debug as ID
 
-import Debug.Trace
 
 type RoutingApplication m =
      Request -- ^ the request, the field 'pathInfo' may be modified by url routing
@@ -91,17 +78,17 @@ toApplication ra request respond = do
    where
      --routingRespond :: MonadSnap m => Either RouteMismatch Response -> m Response
      routingRespond (Left NotFound) =
-       respond . traceShow "RR NOTFOUND" $ responseLBS notFound404 [] "not found"
+       respond $ responseLBS notFound404 [] "not found"
      routingRespond (Left WrongMethod) =
-       respond . traceShow "RR NOTALLOWED" $ responseLBS methodNotAllowed405 [] "method not allowed"
+       respond $ responseLBS methodNotAllowed405 [] "method not allowed"
      routingRespond (Left (InvalidBody err)) =
-       respond . traceShow "RR INVALIDBODY" $ responseLBS badRequest400 [] $ fromString $ "invalid request body: " ++ err
+       respond $ responseLBS badRequest400 [] $ fromString $ "invalid request body: " ++ err
      routingRespond (Left UnsupportedMediaType) =
-       respond . traceShow "RR BADMIME" $ responseLBS unsupportedMediaType415 [] "unsupported media type"
+       respond $ responseLBS unsupportedMediaType415 [] "unsupported media type"
      routingRespond (Left (HttpError status body)) =
-       respond . traceShow "RR HTTP ERROR" $ responseLBS status [] $ fromMaybe (BL.fromStrict $ statusMessage status) body
+       respond $ responseLBS status [] $ fromMaybe (BL.fromStrict $ statusMessage status) body
      routingRespond (Right response) =
-       respond $ traceShow "RR SUCCESS" response
+       respond response
 
 
 responseLBS :: Status -> [(CI B.ByteString, B.ByteString)] -> BL.ByteString -> Response
@@ -148,24 +135,25 @@ isMismatch (RR (Left _)) = True
 isMismatch _             = False
 
 
-
+-- TODO: Use these (or related) functions to avoid consuming
+-- the request body (haskell-servant/servant github issue --TODO lookup issue number)
 peekRequestBody :: forall m. MonadIO m => Int64 -> Request -> m B.ByteString
-peekRequestBody nMax request =
+peekRequestBody _ request =
   do
     liftIO $ putStrLn "IN PEEKBODY"
     (SomeEnumerator enum) <- liftIO $ readIORef (rqBody request)
 
     consumeStep <- liftIO $ I.runIteratee I.consume
-    liftIO $ print "about to get step"
+    liftIO $ putStrLn "about to get step"
     step <- liftIO $ I.runIteratee $ I.joinI $ I.takeNoMoreThan 15 consumeStep
-    liftIO $ print "about to get body"
+    liftIO $ putStrLn "about to get body"
 
     eBody <- liftIO $ I.run $ enum step -- TODO run_ is unsafe
     case eBody of
       Left e -> error $ "ERROR: " ++  show e
       Right body' -> do
         let body = B.concat body'
-        liftIO $ print "THE WHOLE BODY"
+        liftIO $ putStrLn "THE WHOLE BODY"
         liftIO $ print body
         let e = I.enumBS body I.>==> I.joinI . I.take 0
         let e' st =
@@ -180,13 +168,13 @@ peekRequestBody nMax request =
 peekRequestBodyIO :: Int64 -> Request -> IO B.ByteString
 peekRequestBodyIO nMax request =
   do
-    print "IN ITERATEE PART"
+    putStrLn "IN ITERATEE PART"
     (SomeEnumerator enum) <- readIORef (rqBody request)
     consumeStep <- I.runIteratee I.consume
     step <- I.runIteratee $ I.joinI $ I.takeNoMoreThan nMax consumeStep
-    print "ABOUT TO GRAB THE BODY"
+    putStrLn "ABOUT TO GRAB THE BODY"
     body <- fmap B.concat $ I.run_ $ ID.iterateeDebugWrapperWith show "DEBUG WRAPPER" (enum step) -- TODO run_ is unsafe
-    print "BODY READ FINISHED"
+    putStrLn "BODY READ FINISHED"
     let e = I.enumBS body I.>==> I.joinI . I.take 0
     let e' st =
           do

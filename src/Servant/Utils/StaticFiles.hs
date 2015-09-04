@@ -10,12 +10,8 @@ module Servant.Utils.StaticFiles (
  ) where
 
 import           Control.Monad.Trans.Class         (lift)
-import           System.FilePath                   (addTrailingPathSeparator)
---import Network.Wai.Application.Static (staticApp, defaultFileServerSettings)
-import           Filesystem.Path.CurrentOS         (decodeString)
 import           Servant.API.Raw                   (Raw(..))
 import           Servant.Server                    (Server)
-import           Servant.Server.Internal.SnapShims
 import           Snap.Core
 import qualified Snap.Util.FileServe               as Snap
 

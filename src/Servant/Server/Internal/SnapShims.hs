@@ -2,7 +2,6 @@
 
 module Servant.Server.Internal.SnapShims where
 
-import           Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString        as B
 import           Data.IORef
 import           Snap.Core
