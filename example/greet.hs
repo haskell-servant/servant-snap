@@ -10,11 +10,12 @@ import           Control.Monad.Trans.Either
 import           Control.Monad.Trans.Class (lift)
 import           Control.Lens
 import           Data.Aeson
+import           Data.Map.Syntax ((##))
 import           Data.Monoid
 import           Data.Proxy
 import           Data.Text
 import           GHC.Generics
-import Heist
+import           Heist
 import qualified Heist.Interpreted as I
 import           Servant.Server.Internal.SnapShims
 import           Snap.Core
@@ -24,7 +25,8 @@ import           Snap.Snaplet.Session
 import           Snap.Snaplet.Session.Backends.CookieSession
 import           Snap.Snaplet.Auth.Backends.JsonFile
 import           Snap.Snaplet.Heist
-import           Snap.Http.Server
+import           Snap.Http.Server (defaultConfig)
+import           Snap.Http.Server.Config (setPort)
 
 import           Servant
 
@@ -118,7 +120,7 @@ instance HasHeist App where
 initApp :: SnapletInit App App
 initApp = makeSnaplet "myapp" "An example app in servant" Nothing $ do
   h <- nestSnaplet "" heist $ heistInit "templates"
-  s <- nestSnaplet "sess" sess $ initCookieSessionManager "site_key.txt" "sess" (Just 3600)
+  s <- nestSnaplet "sess" sess $ initCookieSessionManager "site_key.txt" "sess" Nothing (Just 3600)
   a <- nestSnaplet "" auth $ initJsonFileAuthManager defAuthSettings sess "users.json"
   addRoutes [("api", applicationToSnap test)]
   return $ App h s a
@@ -127,7 +129,7 @@ initApp = makeSnaplet "myapp" "An example app in servant" Nothing $ do
 -- Run the server.
 --
 runTestServer :: Int -> IO ()
-runTestServer port = serveSnaplet (setPort port mempty )
+runTestServer port = serveSnaplet (setPort port defaultConfig)
                       initApp
 
 -- Put this all to work!

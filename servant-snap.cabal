@@ -2,20 +2,20 @@ name:                servant-snap
 version:             0.5
 synopsis:            A family of combinators for defining webservices APIs and serving them
 description:
-  A family of combinators for defining webservices APIs and serving them
+  Interpret a Servant API as a Snap server, using any Snaplets you like.
   .
-  You can learn about the basics in the <http://haskell-servant.github.io/tutorial tutorial>.
+  You can learn about the basics of servant in the Servant <http://haskell-servant.github.io/tutorial tutorial>, and about the basics of Snap at the Snaplets <http://snapframework.com/docs/tutorials/snaplets-tutorial tutorial>
   .
-  <https://github.com/haskell-servant/servant/blob/master/servant-server/example/greet.hs Here>
+  <https://github.com/haskell-servant/servant-snap/blob/master/servant-server/example/greet.hs Here>
   is a runnable example, with comments, that defines a dummy API and implements
-  a webserver that serves this API, using this package.
+  a webserver that serves this API, using this package. One route delegates to the <https://hackage.haskell.org/package/snap/docs/Snap-Snaplet-Auth.html Auth> snaplet, another delegates to <https://hackage.haskell.org/package/snap/docs/Snap-Snaplet-Heist.html Heist>.
   .
-  <https://github.com/haskell-servant/servant/blob/master/servant-server/CHANGELOG.md CHANGELOG>
+  <https://github.com/haskell-servant/servant-snap/blob/master/servant-snap/CHANGELOG.md CHANGELOG>
 homepage:            http://haskell-servant.github.io/
 Bug-reports:         http://github.com/haskell-servant/servant/issues
 license:             BSD3
 license-file:        LICENSE
-author:              Alp Mestanogullari, Sönke Hahn, Julian K. Arni
+author:              Alp Mestanogullari, Sönke Hahn, Julian K. Arni, Greg Hale
 maintainer:          alpmestan@gmail.com imalsogreg@gmail.com
 copyright:           2014 Zalora South East Asia Pte Ltd
 category:            Web
@@ -53,6 +53,7 @@ library
       , contravariant      >= 1.3  && < 1.4
       , either             >= 4.3  && < 4.5
       , http-types         >= 0.8  && < 0.9
+      , io-streams
       , network-uri        >= 2.6  && < 2.7
       , mtl                >= 2    && < 3
       , mmorph             >= 1
@@ -64,9 +65,9 @@ library
       , filepath           >= 1
       , text               >= 1.2  && < 1.3
       , transformers       >= 0.3  && < 0.5
-      , snap               >= 0.14 && < 1.0
-      , snap-core          >= 0.9  && < 1.0
-      , snap-server        >= 0.9  && < 1.0
+      , snap               >= 1.0  && < 1.1
+      , snap-core          >= 1.0  && < 1.1
+      , snap-server        >= 1.0  && < 1.1
       , wai                >= 3.0  && < 3.1
       , wai-app-static     >= 3.0  && < 3.2
       , warp               >= 3.0  && < 3.1
@@ -91,6 +92,7 @@ executable greet
     , servant-blaze
     , servant-snap
     , aeson
+    , map-syntax
     , snap
     , snap-core
     , snap-server

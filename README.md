@@ -2,9 +2,27 @@
 
 ![servant](https://raw.githubusercontent.com/haskell-servant/servant/master/servant.png)
 
-A fork of snap-server running on [snap](http://www.snapframework.com). Not yet working.
+Snaplet-capable [snap](http://www.snapframework.com) server for [servant](http://github.com/haskell-servant) APIs.
 
 This library lets you *implement* an HTTP server with handlers for each endpoint of a servant API, handling most of the boilerplate for you.
+
+## Building
+
+We target the soon-to-be-released [snap-1.0](http://github.com/snapframework/snap) and a WIP branch of [servant-0.5](http://github.com/codedmart/servant). To get all the necessary dependencies, clone the servant-snap repository, and within that directory, run
+
+```bash
+git submodule update --init --recursive
+./init-sandbox.sh
+```
+
+Then, build the library and example server:
+
+```
+cabal install --only-dep
+cabal build
+dist/build/greet/greet
+curl localhost:8001/api/hello/DearUser
+```
 
 ## Getting started
 
