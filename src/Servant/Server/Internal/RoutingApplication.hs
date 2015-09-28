@@ -93,13 +93,6 @@ toApplication ra request respond = do
        respond response
 
 
--- responseLBS :: Status -> [(CI B.ByteString, B.ByteString)] -> BL.ByteString -> Response
--- responseLBS (Status code msg) hs body =
---     setResponseStatus code msg
---     . (\r -> L.foldl' (\r' (h,h') -> addHeader h h' r') r hs)
---     . setResponseBody (I.enumBuilder . fromLazyByteString $ body)
---     $ emptyResponse
-
 responseLBS :: Status -> [(CI B.ByteString, B.ByteString)] -> BL.ByteString -> Response
 responseLBS (Status code msg) hs body =
     setResponseStatus code msg
