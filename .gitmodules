@@ -7,3 +7,6 @@
 [submodule "deps/snap-loader-static"]
 	path = deps/snap-loader-static
 	url = http://github.com/snapframework/snap-loader-static
+[submodule "deps/servant"]
+	path = deps/servant
+	url = http://github.com/haskell-servant/servant
