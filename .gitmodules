@@ -10,3 +10,6 @@
 [submodule "deps/servant"]
 	path = deps/servant
 	url = http://github.com/haskell-servant/servant
+[submodule "deps/hspec-snap"]
+	path = deps/hspec-snap
+	url = http://github.com/dbp/hspec-snap

@@ -116,7 +116,7 @@ test-suite spec
     , either
     , exceptions
     , hspec == 2.*
-    , hspec-snap
+    , hspec-snap >= 1.0 && < 1.1
     , hspec-core
   --  , hspec-wai
     , http-types

@@ -140,10 +140,10 @@ captureSpec = do
       it "can capture parts of the 'pathInfo'" $ do
         response <- get "/2"
         case response of
-          Json bs -> do
+          Json _ bs -> do
             let d = decode' bs
             d `shouldEqual` Just tweety
-          _       -> setResult (Fail "Should have been json body")
+          _       -> setResult (Fail Nothing "Should have been json body")
 
       it "returns 404 if the decoding fails" $ do
         get "/notAnInt" >>= should404
@@ -151,7 +151,7 @@ captureSpec = do
   snap (route (routes captureApi2 captureServer2)) app $ do
     describe "Servant.API.Capture" $ do
       it "strips the captured path snippet from pathInfo" $ do
-        get "/captured/foo" >>= shouldEqual (Html "foo")
+        get "/captured/foo" >>= shouldHaveText "foo"
 
 
 type GetApi = Get '[JSON] Person
@@ -160,9 +160,9 @@ getApi :: Proxy GetApi
 getApi = Proxy
 
 should405 :: TestResponse -> SnapHspecM b ()
-should405 (Html _) = setResult (Fail "Should have failed, got HTML")
+should405 (Html _ _) = setResult (Fail Nothing "Should have failed, got HTML")
 should405 (Other 405) = setResult Success
-should405 _ = setResult (Fail "Should have 405'd")
+should405 _ = setResult (Fail Nothing "Should have 405'd")
 
 getSpec :: Spec
 getSpec = snap (route (routes getApi (return alice :<|> return ()))) app $ do
@@ -171,9 +171,9 @@ getSpec = snap (route (routes getApi (return alice :<|> return ()))) app $ do
       it "allows to GET a Person" $ do
         response <- get "/"
         case response of
-          Json bs -> do
+          Json _ bs -> do
             decode' bs `shouldEqual`  (Just alice)
-          _ -> setResult (Fail "Should have been json body")
+          _ -> setResult (Fail Nothing "Should have been json body")
 
       it "throws 405 (wrong method) on POSTs" $ do
         postJson "/" ("" :: String) >>= should405
@@ -212,38 +212,38 @@ queryParamSpec = snap (route (routes queryParamApi qpServer)) app $ do
       it "allows to retrieve simple GET parameters" $ do
           response1 <- get "?name=bob"
           case response1 of
-            Json bs ->
+            Json _ bs ->
               decode' bs `shouldEqual` (Just $ alice{name = "bob"})
-            _ -> setResult (Fail "Should have been json body")
+            _ -> setResult (Fail Nothing "Should have been json body")
 
       it "allows to retrieve lists in GET parameters" $ do
           let params2 = "?names[]=bob&names[]=john"
           response2 <- get ("a" <> params2)
           case response2 of
-            Json bs ->
+            Json _ bs ->
               decode' bs `shouldEqual` Just alice{name="john"}
-            _ -> setResult  (Fail "Should have been json body")
+            _ -> setResult  (Fail Nothing "Should have been json body")
 
       it "allows to retrieve value-less GET parameters" $ do
           response3 <- get "b?capitalize"
           case response3 of
-            Json bs ->
+            Json _ bs ->
               decode' bs `shouldEqual` Just alice{name="ALICE"}
-            _ -> setResult  (Fail "Should have been json body")
+            _ -> setResult  (Fail Nothing "Should have been json body")
 
       it "allows to retrieve value-less GET parameters again" $ do -- TODO rename
           response3' <- get "b?capitalize"
           case response3' of
-            Json bs ->
+            Json _ bs ->
               decode' bs `shouldEqual` Just alice{name="ALICE"}
-            _ -> setResult  (Fail "Should have been json body")
+            _ -> setResult  (Fail Nothing "Should have been json body")
 
       it "allows to retrieve value-less GET parameters again" $ do -- TODO rename
           response3'' <- get "b?unknown="
           case response3'' of
-            Json bs ->
+            Json _ bs ->
               decode' bs `shouldEqual` Just alice{name="Alice"}
-            _ -> setResult  (Fail "Should have been json body")
+            _ -> setResult  (Fail Nothing "Should have been json body")
 
 
 
@@ -269,8 +269,8 @@ mpServer = matrixParamServer :<|> mpNames :<|> mpCapitalize alice :<|> mpComplex
         mpAge age p = return p { age = age }
         mpComplex capture name cap = matrixParamServer name >>= flip mpCapitalize cap >>= mpAge capture
 
-shouldDecodeTo (Json bs) v = decode' bs `shouldEqual` Just v
-shouldDecodeTo _         _ = setResult (Fail "Should have been json body")
+shouldDecodeTo (Json _ bs) v = decode' bs `shouldEqual` Just v
+shouldDecodeTo _           _ = setResult (Fail Nothing "Should have been json body")
 
 matrixParamSpec :: Spec
 matrixParamSpec = snap (route (routes matrixParamApi mpServer)) app $ do
@@ -308,13 +308,13 @@ postSpec = snap (route (routes postApi pServer)) app $ do
   describe "Servant.API.Post and .ReqBody" $ do
 
       it "allows to POST a Person" $ do
-        postJson "/" alice >>= (`shouldEqual` (Html "42"))
+        postJson "/" alice >>= shouldHaveText "42"
 
       it "allows alternative routes if all have request bodies" $ do
-        postJson "/bla" alice >>= (`shouldEqual` (Html "42"))
+        postJson "/bla" alice >>= shouldHaveText "42"
 
       it "handles trailing '/' gracefully" $ do
-        postJson "/bla/" alice >>= (`shouldEqual` (Html "42"))
+        postJson "/bla/" alice >>= shouldHaveText "42"
 
       it "correctly rejects invalid request bodies with status 400" $ do
         postJson "/" ("some invalid body" :: String) >>= (`shouldEqual`  (Other 400))
@@ -344,15 +344,15 @@ putSpec = snap (route (routes putApi pServer)) app $ do
           putJson' x v = put' x (T.decodeUtf8 . BL.toStrict $ encode v) (Map.fromList [("Content-Type" , ["application/nonsense"])])
 
       it "allows to put a Person" $ do
-        putJson "/" alice >>= (`shouldEqual` (Html "42")) --`shouldRespondWith` "42"{
+        putJson "/" alice >>= shouldHaveText "42"
           --matchStatus = 200
          --}
 
       it "allows alternative routes if all have request bodies" $ do
-        putJson "/bla" alice >>= (`shouldEqual` (Html "42"))
+        putJson "/bla" alice >>= shouldHaveText "42"
 
       it "handles trailing '/' gracefully" $ do
-        putJson "/bla/" alice >>= (`shouldEqual` (Html "42"))
+        putJson "/bla/" alice >>= shouldHaveText "42"
 
       it "correctly rejects invalid request bodies with status 400" $ do
         putJson "/" ("some invalid body" :: String) >>= (`shouldEqual` (Other 400))
@@ -462,7 +462,7 @@ rawSpec :: Spec
 rawSpec = snap (route (routes rawApi rawApplication)) app $ do
   describe "Servant.API.Raw" $ do
     it "runs applications" $ do
-      get "foo/42" >>= (`shouldEqual` (Html "42"))
+      get "foo/42" >>= shouldHaveText "42"
       -- (flip runSession) (serve rawApi (rawApplication (const (42 :: Integer)))) $ do
       --   response <- Network.Wai.Test.request defaultRequest{
       --     pathInfo = ["foo"]
@@ -471,7 +471,7 @@ rawSpec = snap (route (routes rawApi rawApplication)) app $ do
       --     simpleBody response `shouldBe` "42"
 
     it "gets the pathInfo modified" $ do
-      get "foo/bar" >>= (`shouldEqual` (Html "bar"))
+      get "foo/bar" >>= shouldHaveText "bar"
       -- (flip runSession) (serve rawApi (rawApplication pathInfo)) $ do
       --   response <- Network.Wai.Test.request defaultRequest{
       --     pathInfo = ["foo", "bar"]
