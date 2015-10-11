@@ -11,9 +11,6 @@ module Servant.ServerSpec where
 
 
 import           Control.Monad              (forM_, when)
-import           Control.Monad.Trans.Class  (lift)
-import           Control.Monad.Trans.Either (EitherT, left)
-import           Control.Monad.IO.Class     (liftIO)
 import           Data.Aeson                 (FromJSON, ToJSON, decode', encode)
 import qualified Data.ByteString.Char8      as B8
 import qualified Data.ByteString.Lazy       as BL
@@ -22,15 +19,12 @@ import           Data.Char                  (toUpper)
 import qualified Data.Map                   as Map
 import           Data.Monoid                ((<>))
 import           Data.Proxy                 (Proxy (Proxy))
-import           Data.String                (fromString)
 import           Data.String.Conversions    (cs)
 import qualified Data.Text                  as T
 import qualified Data.Text.Encoding         as T
 import           GHC.Generics               (Generic)
 import           Snap.Core                  hiding (Headers, addHeader)
-import           Snap.Http.Server
 import           Snap.Snaplet
-import           Snap.Test                  hiding (with, get, addHeader, put)
 import           Test.Hspec
 import           Test.Hspec.Core.Spec (Result(..))
 import           Test.Hspec.Snap            hiding (NotFound)
@@ -41,16 +35,17 @@ import           Servant.API                ((:<|>) (..), (:>),
                                              MatrixParams, Patch, PlainText,
                                              Post, Put, QueryFlag, QueryParam,
                                              QueryParams, Raw, ReqBody)
-import           Servant.Server             (Server, serve, ServantErr(..), err404)
+import           Servant.Server             (Server, serve)
 import           Servant.Server.Internal    (HasServer)
 import           Servant.Server.Internal.SnapShims
 import           Servant.Server.Internal.RoutingApplication
-import           Servant.Server.Internal.PathInfo (pathInfo)
 
 import Debug.Trace
 
 
 -- * test data types
+
+type AppHandler = Handler App App
 
 data Person = Person {
   name :: String,
@@ -88,7 +83,7 @@ app = makeSnaplet "servantsnap" "A test app for servant-snap" Nothing $ do
 
 routes :: HasServer api
        => Proxy api
-       -> Server api (Handler App App)
+       -> Server api AppHandler
        -> [(B8.ByteString, Handler App App ())]
 routes p s = [("", applicationToSnap (serve p s))]
 
@@ -117,18 +112,18 @@ type CaptureApi = Capture "legs" Integer :> Get '[JSON] Animal
 captureApi :: Proxy CaptureApi
 captureApi = Proxy
 
-captureServer :: Integer -> EitherT ServantErr (Handler App App) Animal
+captureServer :: Integer -> AppHandler Animal
 captureServer legs = case legs of
   4 -> return jerry
   2 -> return tweety
-  _ -> left err404
+  _ -> finishWith (setResponseCode 404 emptyResponse)
 
-type CaptureApi2 = Capture "captured" String :> Raw (Handler App App) (Handler App App ())
+type CaptureApi2 = Capture "captured" String :> Raw AppHandler (AppHandler ())
 captureApi2 :: Proxy CaptureApi2
 captureApi2 = Proxy
 
-captureServer2 :: String  -> Server (Raw a (Handler App App ())) (Handler App App)
-captureServer2 _ = lift $ do
+captureServer2 :: String  -> Server (Raw [] Bool) AppHandler
+captureServer2 _ = do
   r <- getRequest
   writeBS (rqPathInfo r)
 
@@ -194,7 +189,7 @@ type QueryParamApi = QueryParam "name" String :> Get '[JSON] Person
 queryParamApi :: Proxy QueryParamApi
 queryParamApi = Proxy
 
-qpServer :: Server QueryParamApi (Handler App App)
+qpServer :: Server QueryParamApi AppHandler
 qpServer = queryParamServer :<|> qpNames :<|> qpCapitalize
 
   where qpNames (_:name2:_) = return alice { name = name2 }
@@ -255,7 +250,7 @@ type MatrixParamApi = "a" :> MatrixParam "name" String :> Get '[JSON] Person
 matrixParamApi :: Proxy MatrixParamApi
 matrixParamApi = Proxy
 
-mpServer :: Server MatrixParamApi (Handler App App)
+mpServer :: Server MatrixParamApi AppHandler
 mpServer = matrixParamServer :<|> mpNames :<|> mpCapitalize alice :<|> mpComplex
   where mpNames (_:name2:_) _ = return alice { name = name2 }
         mpNames _           _ = return alice
@@ -334,7 +329,7 @@ type PutApi =
 putApi :: Proxy PutApi
 putApi = Proxy
 
-putServer :: Server PutApi (Handler App App)
+putServer :: Server PutApi AppHandler
 putServer = return . age :<|> return . age :<|> return ()
 
 putSpec :: Spec
@@ -374,7 +369,7 @@ type PatchApi =
 patchApi :: Proxy PatchApi
 patchApi = Proxy
 
-patchServer :: Server PatchApi (Handler App App)
+patchServer :: Server PatchApi AppHandler
 patchServer = return . age :<|> return . age :<|> return ()
 
 
@@ -425,12 +420,12 @@ headerApi = Proxy
 headerSpec :: Spec
 headerSpec = do
 
-  let expectsInt :: Maybe Int -> EitherT ServantErr (Handler App App) ()
+  let expectsInt :: Maybe Int -> AppHandler ()
       --expectsInt :: Server HeaderApi
       expectsInt (Just x) = when (x /= 5) $ error "Expected 5"
       expectsInt Nothing  = error "Expected an int"
 
-  let expectsString :: Maybe String -> EitherT ServantErr (Handler App App) ()
+  let expectsString :: Maybe String -> AppHandler ()
       expectsString (Just x) = when (x /= "more from you") $ error "Expected more from you"
       expectsString Nothing  = error "Expected a string"
 
@@ -448,13 +443,13 @@ headerSpec = do
             post' "/"  >>= (`shouldEqual` (Other 204))
 
 
-type RawApi = "foo" :> Raw (Handler App App) (Handler App App ())
+type RawApi = "foo" :> Raw AppHandler (Handler App App ())
 rawApi :: Proxy RawApi
 rawApi = Proxy
 --rawApplication :: Show a => (Request -> a) -> Application
 --rawApplication f request_ respond = respond $ responseLBS ok200 [] (cs $ show $ f request_)
-rawApplication :: Server (Raw (Handler App App) (Handler App App ())) (Handler App App)
-rawApplication = lift $ do
+rawApplication :: Server (Raw AppHandler (AppHandler ())) AppHandler
+rawApplication = do
   b <- readRequestBody 1000
   writeBS (BL.toStrict b)
 
@@ -489,7 +484,7 @@ type AlternativeApi =
 unionApi :: Proxy AlternativeApi
 unionApi = Proxy
 
-unionServer :: Server AlternativeApi (Handler App App)
+unionServer :: Server AlternativeApi AppHandler
 unionServer =
        return alice
   :<|> return jerry
@@ -529,7 +524,7 @@ type ResponseHeadersApi =
 rhApi :: Proxy ResponseHeadersApi
 rhApi = Proxy
 
-rhServer :: Server ResponseHeadersApi (Handler App App)
+rhServer :: Server ResponseHeadersApi AppHandler
 rhServer = let h = return $ addHeader 5 $ addHeader "kilroy" "hi"
   in h :<|> h :<|> h :<|> h
 
@@ -541,21 +536,15 @@ responseHeadersSpec = snap (route (routes rhApi rhServer)) app $ do
     let methods = [(get,  should200)
                   ,(flip post Map.empty, (`shouldEqual` (Other 202)))
                   ,(flip put  Map.empty, (`shouldEqual` (Other 200)))
-                  --,(methodPatch, 200)
                   ]
-        expectedHeaders = params [("H1","H2")]
 
     it "includes the headers in the response" $
       forM_ methods $ \(method, expected) ->
-        method "/" >>= expected -- (`shouldEqual` expected)
-          --`shouldRespondWith` "\"hi\""{ matchHeaders = ["H1" <:> "5", "H2" <:> "kilroy"]
-          --                            , matchStatus  = expected
-          --                            }
+        method "/" >>= expected
 
     it "responds with not found for non-existent endpoints" $
       forM_ methods $ \(method,_) ->
         method "blahblah" >>= should404
-          --`shouldRespondWith` 404
 
     -- TODO: bring this test  back eventually
     -- (need to be able to add headers to requests in the list)
@@ -569,7 +558,7 @@ type PrioErrorsApi = ReqBody '[JSON] Person :> "foo" :> Get '[JSON] Integer
 prioErrorsApi :: Proxy PrioErrorsApi
 prioErrorsApi = Proxy
 
-peServer :: Server PrioErrorsApi (Handler App App)
+peServer :: Server PrioErrorsApi AppHandler
 peServer = return . age
 
 -- | Test the relative priority of error responses from the server.
