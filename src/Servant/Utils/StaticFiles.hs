@@ -36,6 +36,4 @@ import qualified Snap.Util.FileServe               as Snap
 -- handler in the last position, because /servant/ will try to match the handlers
 -- in order.
 serveDirectory :: MonadSnap m => FilePath -> Server (Raw a (m ())) m
-serveDirectory fp = lift . liftSnap $ Snap.serveDirectory fp
-  -- (snapToApplication (Snap.serveDirectory fp) req handler)
-    --staticApp . defaultFileServerSettings . addTrailingPathSeparator
+serveDirectory fp = liftSnap $ Snap.serveDirectory fp

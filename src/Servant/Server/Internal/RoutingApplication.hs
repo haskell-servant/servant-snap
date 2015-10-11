@@ -102,7 +102,7 @@ responseLBS (Status code msg) hs body =
        return out)
     $ emptyResponse
 
-runAction :: MonadSnap m => m (RouteResult (EitherT ServantErr m a))
+runAction :: MonadSnap m => m (RouteResult (m a))
           -> (RouteResult Response -> m r)
           -> (a -> RouteResult Response)
           -> m r
@@ -111,10 +111,12 @@ runAction action respond k = do
   go r
   where
     go (RR (Right a))  = do
-      e <- runEitherT a
-      respond $ case e of
-        Right x  -> k x
-        Left err -> succeedWith $ responseServantErr err
+      e <- a
+      respond $ k e
+      -- e <- runEitherT a
+      -- respond $ case e of
+      --   Right x  -> k x
+      --   Left err -> succeedWith $ responseServantErr err
     go (RR (Left err)) = respond $ failWith err
 
 feedTo :: MonadSnap m => m (RouteResult (a -> b)) -> a -> m (RouteResult b)
