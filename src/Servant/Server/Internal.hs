@@ -58,8 +58,10 @@ import           Servant.Server.Internal.SnapShims
 class HasServer layout where
   type ServerT layout (m :: * -> *) :: *
 
-  route :: MonadSnap m => Proxy layout -> m (RouteResult (Server layout m)) -> Router Request (RoutingApplication m) m
-  --route :: (MonadSnap m) => Proxy layout -> m (RouteResult (Server layout)) -> Router Request RoutingApplication
+  route :: MonadSnap m
+        => Proxy layout
+        -> m (RouteResult (Server layout m))
+        -> Router Request (RoutingApplication m) m
 
 type Server layout m = ServerT layout m
 
