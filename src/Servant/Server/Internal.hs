@@ -58,10 +58,12 @@ import           Servant.Server.Internal.SnapShims
 class HasServer layout where
   type ServerT layout (m :: * -> *) :: *
 
-  route :: MonadSnap m => Proxy layout -> m (RouteResult (Server layout m)) -> Router Request (RoutingApplication m) m
-  --route :: (MonadSnap m) => Proxy layout -> m (RouteResult (Server layout)) -> Router Request RoutingApplication
+  route :: MonadSnap m
+        => Proxy layout
+        -> m (RouteResult (Server layout m))
+        -> Router Request (RoutingApplication m) m
 
-type Server layout m = ServerT layout (EitherT ServantErr m)
+type Server layout m = ServerT layout m
 
 -- * Instances
 
@@ -122,7 +124,7 @@ instance (KnownSymbol capture, FromText a, HasServer sublayout)
 
 methodRouter :: (AllCTRender ctypes a, MonadSnap m)
              => Method -> Proxy ctypes -> Status
-             -> m (RouteResult (EitherT ServantErr m a))
+             -> m (RouteResult (m a))
              -> Router Request (RoutingApplication m) m
 methodRouter method proxy status action = LeafRouter route'
   where
@@ -140,7 +142,7 @@ methodRouter method proxy status action = LeafRouter route'
 
 methodRouterHeaders :: (GetHeaders (Headers h v), AllCTRender ctypes v, MonadSnap m)
                     => Method -> Proxy ctypes -> Status
-                    -> m (RouteResult (EitherT ServantErr m (Headers h v)))
+                    -> m (RouteResult (m (Headers h v)))
                     -> Router Request (RoutingApplication m) m
 methodRouterHeaders method proxy status action = LeafRouter route'
   where
@@ -158,7 +160,7 @@ methodRouterHeaders method proxy status action = LeafRouter route'
       | otherwise = respond $ failWith NotFound
 
 methodRouterEmpty :: MonadSnap m => Method
-                  -> m (RouteResult (EitherT ServantErr m ()))
+                  -> m (RouteResult (m ()))
                   -> Router Request (RoutingApplication m) m
 methodRouterEmpty method action = LeafRouter route'
   where
@@ -645,17 +647,8 @@ instance (ToRawApplication m a, a ~ m ()) => HasServer (Raw m a) where
     r <- rawApplication
     case r of
       RR (Left err)      -> respond $ failWith err
-      RR (Right (rawApp)) -> (toRawApplication (unEitherT rawApp)) request (respond . succeedWith)
-      --RR (Right (Raw a)) -> (toRawApplication (Proxy :: Proxy m) app) request ( respond . succeedWith) -- XXX TODO
-        --runApp <- app request ((liftSnap <$> respond) . succeedWith)
-        --let b = runApp :: Int
+      RR (Right rawApp) -> (toRawApplication rawApp) request (respond . succeedWith)
 
-unEitherT :: MonadSnap m => EitherT ServantErr m a -> m () -- TODO FIX!
-unEitherT act = do
-  r <- runEitherT act
-  case r of
-    Left e  -> writeBS (B.pack (show e))
-    Right a -> return a >> return ()
 
 -- | If you use 'ReqBody' in one of the endpoints for your API,
 -- this automatically requires your server-side handler to be a function

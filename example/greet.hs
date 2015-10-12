@@ -84,24 +84,24 @@ server :: Server (TestApi AppHandler) AppHandler
 server = helloH :<|> helloH' :<|> postGreetH :<|> deleteGreetH
          :<|> serveDirectory "static" :<|> doRaw
 
-  where helloH :: MonadSnap m => Text -> Maybe Bool -> EitherT ServantErr m Greet
+  where helloH :: MonadSnap m => Text -> Maybe Bool -> m Greet
         helloH name Nothing = helloH name (Just False)
         helloH name (Just False) = return . Greet $ "Hello, " <> name
         helloH name (Just True) = return . Greet . toUpper $ "Hello, " <> name
 
-        helloH' :: Text -> Maybe Bool -> EitherT ServantErr (Handler App App) Greet
-        helloH' name _ = lift $ with auth $ do
+        helloH' :: Text -> Maybe Bool -> (Handler App App) Greet
+        helloH' name _ = with auth $ do
           cu <- currentUser
           return (Greet $ "Hi from snaplet, " <> name
                   <> ". Login is " <> maybe "No login" (pack . show) cu)
 
-        postGreetH :: Greet -> EitherT ServantErr (Handler App App) Greet
+        postGreetH :: Greet -> (Handler App App) Greet
         postGreetH greet = return greet
 
         deleteGreetH _ = return ()
 
         doRaw :: Server (Raw (Handler App App) (Handler App App ())) (Handler App App)
-        doRaw = lift $ with auth $ do
+        doRaw = with auth $ do
           u <- currentUser
           let spl = "tName" ## I.textSplice (maybe "NoLogin" (pack . show) u)
           renderWithSplices "test" spl
