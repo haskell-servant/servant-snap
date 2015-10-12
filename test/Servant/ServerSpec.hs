@@ -78,7 +78,6 @@ data App = App
 
 app :: SnapletInit App App
 app = makeSnaplet "servantsnap" "A test app for servant-snap" Nothing $ do
-  --wrapSite (\site -> applicationToSnap (serve captureApi captureServer) )
   return App
 
 routes :: HasServer api
