@@ -7,11 +7,9 @@ module Servant.Utils.StaticFilesSpec where
 
 import Control.Exception (bracket)
 import Data.Proxy (Proxy(Proxy))
-import Network.Wai (Application)
 import System.Directory (getCurrentDirectory, setCurrentDirectory, createDirectory)
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec (Spec, describe, it, around_)
---import Test.Hspec.Wai (with, get, shouldRespondWith)
 import Test.Hspec.Snap
 
 import Servant.API (JSON)
@@ -21,6 +19,7 @@ import Servant.API.Get (Get)
 import Servant.API.Raw (Raw)
 import Servant.API.Sub ((:>))
 import Servant.Server (Server, serve)
+import Servant.Server.Internal.SnapShims (Application)
 import Servant.ServerSpec (Person(Person))
 import Servant.Utils.StaticFiles (serveDirectory)
 
