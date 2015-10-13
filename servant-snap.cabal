@@ -68,9 +68,6 @@ library
       , snap               >= 1.0  && < 1.1
       , snap-core          >= 1.0  && < 1.1
       , snap-server        >= 1.0  && < 1.1
-      , wai                >= 3.0  && < 3.1
-      , wai-app-static     >= 3.0  && < 3.2
-      , warp               >= 3.1  && < 3.2
   hs-source-dirs: src
   default-language: Haskell2010
   ghc-options: -Wall
@@ -118,7 +115,6 @@ test-suite spec
     , hspec == 2.*
     , hspec-snap >= 1.0 && < 1.1
     , hspec-core
-  --  , hspec-wai
     , http-types
     , network >= 2.6
     , QuickCheck
@@ -133,9 +129,6 @@ test-suite spec
     , snap
     , snap-core
     , snap-server
-    , wai
-    , wai-extra
-    , warp
 
 -- test-suite doctests
 --  build-depends: base
