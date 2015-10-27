@@ -1,6 +1,6 @@
 [submodule "deps/snap"]
 	path = deps/snap
-	url = https://github.com/snapframework/snap
+	url = http://github.com/snapframework/snap
 [submodule "deps/snap-loader-dynamic"]
 	path = deps/snap-loader-dynamic
 	url = http://github.com/snapframework/snap-loader-dynamic
