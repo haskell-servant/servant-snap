@@ -33,13 +33,16 @@ import qualified Data.Text                   as T
 import           Data.Text.Encoding          (decodeUtf8, encodeUtf8)
 import           GHC.TypeLits                (KnownSymbol, symbolVal)
 import           Network.HTTP.Types          (QueryText, parseQueryText)
+import           Web.HttpApiData             (FromHttpApiData)
+import           Web.HttpApiData.Internal    (parseHeaderMaybe,
+                                              parseQueryParamMaybe,
+                                              parseUrlPieceMaybe)
 import           Snap.Core                   hiding (Headers, getHeaders,
                                               getResponse, headers, route,
                                               method)
 import           Servant.API                 ((:<|>) (..), (:>), Capture,
                                                Delete, Get, Header,
-                                              MatrixFlag, MatrixParam,
-                                              MatrixParams, Patch, Post, Put,
+                                              Patch, Post, Put,
                                               QueryFlag, QueryParam,
                                               QueryParams, Raw(..), ReqBody)
 import           Servant.API.ContentTypes    (AcceptHeader (..),
@@ -47,7 +50,7 @@ import           Servant.API.ContentTypes    (AcceptHeader (..),
                                               AllCTUnrender (..))
 import           Servant.API.ResponseHeaders (Headers, getResponse, GetHeaders,
                                               getHeaders)
-import           Servant.Common.Text         (FromText, fromText)
+-- import           Servant.Common.Text         (FromText, fromText)
 
 import           Servant.Server.Internal.PathInfo
 import           Servant.Server.Internal.Router
@@ -87,8 +90,8 @@ instance (HasServer a, HasServer b) => HasServer (a :<|> b) where
     where pa = Proxy :: Proxy a
           pb = Proxy :: Proxy b
 
-captured :: FromText a => proxy (Capture sym a) -> Text -> Maybe a
-captured _ = fromText
+captured :: FromHttpApiData a => proxy (Capture sym a) -> Text -> Maybe a
+captured _ = parseUrlPieceMaybe
 
 -- | If you use 'Capture' in one of the endpoints for your API,
 -- this automatically requires your server-side handler to be a function
@@ -107,7 +110,7 @@ captured _ = fromText
 -- > server = getBook
 -- >   where getBook :: Text -> EitherT ServantErr IO Book
 -- >         getBook isbn = ...
-instance (KnownSymbol capture, FromText a, HasServer sublayout)
+instance (KnownSymbol capture, FromHttpApiData a, HasServer sublayout)
       => HasServer (Capture capture a :> sublayout) where
 
   type ServerT (Capture capture a :> sublayout) m =
@@ -270,14 +273,15 @@ instance
 -- > server = viewReferer
 -- >   where viewReferer :: Referer -> EitherT ServantErr IO referer
 -- >         viewReferer referer = return referer
-instance (KnownSymbol sym, FromText a, HasServer sublayout)
+instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout)
       => HasServer (Header sym a :> sublayout) where
 
   type ServerT (Header sym a :> sublayout) m =
     Maybe a -> ServerT sublayout m
 
   route Proxy subserver = WithRequest $ \ request ->
-    let mheader = fromText . decodeUtf8 =<< getHeader str request
+    let mheader = parseHeaderMaybe =<< getHeader str request
+    -- let mheader = parseHeaderMaybe =<< lookup str (requestHeaders request)
     in  route (Proxy :: Proxy sublayout) (feedTo subserver mheader)
     where str = fromString $ symbolVal (Proxy :: Proxy sym)
 
@@ -418,7 +422,7 @@ instance
 -- >   where getBooksBy :: Maybe Text -> EitherT ServantErr IO [Book]
 -- >         getBooksBy Nothing       = ...return all books...
 -- >         getBooksBy (Just author) = ...return books by the given author...
-instance (KnownSymbol sym, FromText a, HasServer sublayout)
+instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout)
       => HasServer (QueryParam sym a :> sublayout) where
 
   type ServerT (QueryParam sym a :> sublayout) m =
@@ -429,7 +433,7 @@ instance (KnownSymbol sym, FromText a, HasServer sublayout)
           case rqQueryParam paramname request of
             Nothing       -> Nothing -- param absent from the query string
             Just []       -> Nothing -- param present with no value -> Nothing
-            Just (v:_)    -> fromText  (decodeUtf8 v)-- if present, we try to convert to
+            Just (v:_) -> parseQueryParamMaybe (decodeUtf8 v)-- if present, we try to convert to
                                         -- the right type
     in route (Proxy :: Proxy sublayout) (feedTo subserver p)
     where paramname = cs $ symbolVal (Proxy :: Proxy sym)
@@ -453,7 +457,7 @@ instance (KnownSymbol sym, FromText a, HasServer sublayout)
 -- > server = getBooksBy
 -- >   where getBooksBy :: [Text] -> EitherT ServantErr IO [Book]
 -- >         getBooksBy authors = ...return all books by these authors...
-instance (KnownSymbol sym, FromText a, HasServer sublayout)
+instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout)
       => HasServer (QueryParams sym a :> sublayout) where
 
   type ServerT (QueryParams sym a :> sublayout) m =
@@ -465,7 +469,7 @@ instance (KnownSymbol sym, FromText a, HasServer sublayout)
       paramName     = cs $ symbolVal (Proxy :: Proxy sym)
       paramsBare r = concat $ rqQueryParam paramName r
       paramsBrak r = concat $ rqQueryParam (paramName <> "[]") r
-      values     r = mapMaybe (fromText . decodeUtf8) $ paramsBare r <> paramsBrak r
+      values     r = mapMaybe (parseQueryParamMaybe . decodeUtf8) $ paramsBare r <> paramsBrak r
 
 
 -- | If you use @'QueryFlag' "published"@ in one of the endpoints for your API,
@@ -496,134 +500,6 @@ instance (KnownSymbol sym, HasServer sublayout)
           examine v | v == "true" || v == "1" || v == "" = True
                     | otherwise = False
 
-parseMatrixText :: B.ByteString -> QueryText --TODO: still depending on wai/network-types here. port to uri-bytestring
-parseMatrixText = parseQueryText
-
--- | If you use @'MatrixParam' "author" Text@ in one of the endpoints for your API,
--- this automatically requires your server-side handler to be a function
--- that takes an argument of type @'Maybe' 'Text'@.
---
--- This lets servant worry about looking it up in the query string
--- and turning it into a value of the type you specify, enclosed
--- in 'Maybe', because it may not be there and servant would then
--- hand you 'Nothing'.
---
--- You can control how it'll be converted from 'Text' to your type
--- by simply providing an instance of 'FromText' for your type.
---
--- Example:
---
--- > type MyApi = "books" :> MatrixParam "author" Text :> Get [Book]
--- >
--- > server :: Server MyApi
--- > server = getBooksBy
--- >   where getBooksBy :: Maybe Text -> EitherT ServantErr IO [Book]
--- >         getBooksBy Nothing       = ...return all books...
--- >         getBooksBy (Just author) = ...return books by the given author...
-instance (KnownSymbol sym, FromText a, HasServer sublayout)
-      => HasServer (MatrixParam sym a :> sublayout) where
-
-  type ServerT (MatrixParam sym a :> sublayout) m =
-    Maybe a -> ServerT sublayout m
-
-  route Proxy subserver = WithRequest $ \ request ->
-    case (\(a,b) -> a ++ b) $ pathSafeTail request of
-      (first : _)
-        -> do let querytext = parseMatrixText . encodeUtf8 $ T.tail (decodeUtf8 first)
-                  param = case lookup paramname querytext of
-                    Nothing       -> Nothing -- param absent from the query string
-                    Just Nothing  -> Nothing -- param present with no value -> Nothing
-                    Just (Just v) -> fromText v -- if present, we try to convert to
-                                          -- the right type
-              route (Proxy :: Proxy sublayout) (feedTo subserver param)
-      _   -> route (Proxy :: Proxy sublayout) (feedTo subserver Nothing)
-
-    where paramname = cs $ symbolVal (Proxy :: Proxy sym)
-
--- | If you use @'MatrixParams' "authors" Text@ in one of the endpoints for your API,
--- this automatically requires your server-side handler to be a function
--- that takes an argument of type @['Text']@.
---
--- This lets servant worry about looking up 0 or more values in the query string
--- associated to @authors@ and turning each of them into a value of
--- the type you specify.
---
--- You can control how the individual values are converted from 'Text' to your type
--- by simply providing an instance of 'FromText' for your type.
---
--- Example:
---
--- > type MyApi = "books" :> MatrixParams "authors" Text :> Get [Book]
--- >
--- > server :: Server MyApi
--- > server = getBooksBy
--- >   where getBooksBy :: [Text] -> EitherT ServantErr IO [Book]
--- >         getBooksBy authors = ...return all books by these authors...
-instance (KnownSymbol sym, FromText a, HasServer sublayout)
-      => HasServer (MatrixParams sym a :> sublayout) where
-
-  type ServerT (MatrixParams sym a :> sublayout) m =
-    [a] -> ServerT sublayout m
-
-  route Proxy subserver = WithRequest $ \ request ->
-    case parsePathInfo request of
-      (first : _)
-        -> do let matrixtext = parseMatrixText . encodeUtf8 $ T.tail first
-                  -- if sym is "foo", we look for matrix parameters
-                  -- named "foo" or "foo[]" and call fromText on the
-                  -- corresponding values
-                  parameters = filter looksLikeParam matrixtext
-                  values = catMaybes $ map (convert . snd) parameters
-              route (Proxy :: Proxy sublayout) (feedTo subserver values)
-      _ -> route (Proxy :: Proxy sublayout) (feedTo subserver [])
-
-    where paramname = cs $ symbolVal (Proxy :: Proxy sym)
-          looksLikeParam (name, _) = name == paramname || name == (paramname <> "[]")
-          convert Nothing = Nothing
-          convert (Just v) = fromText v
-
--- | If you use @'MatrixFlag' "published"@ in one of the endpoints for your API,
--- this automatically requires your server-side handler to be a function
--- that takes an argument of type 'Bool'.
---
--- Example:
---
--- > type MyApi = "books" :> MatrixFlag "published" :> Get [Book]
--- >
--- > server :: Server MyApi
--- > server = getBooks
--- >   where getBooks :: Bool -> EitherT ServantErr IO [Book]
--- >         getBooks onlyPublished = ...return all books, or only the ones that are already published, depending on the argument...
-instance (KnownSymbol sym, HasServer sublayout)
-      => HasServer (MatrixFlag sym :> sublayout) where
-
-  type ServerT (MatrixFlag sym :> sublayout) m =
-    Bool -> ServerT sublayout m
-
-  route Proxy subserver = WithRequest $ \ request ->
-    case parsePathInfo request of
-      (first : _)
-        -> do let matrixtext = parseMatrixText . encodeUtf8 $ T.tail first
-                  param = case lookup paramname matrixtext of
-                    Just Nothing  -> True  -- param is there, with no value
-                    Just (Just v) -> examine v -- param with a value
-                    Nothing       -> False -- param not in the query string
-
-              route (Proxy :: Proxy sublayout) (feedTo subserver param)
-
-      _ -> route (Proxy :: Proxy sublayout) (feedTo subserver False)
-
-    where paramname = cs $ symbolVal (Proxy :: Proxy sym)
-          examine v | v == "true" || v == "1" || v == "" = True
-                    | otherwise = False
-
-
-class ToRawApplication m a where
-  toRawApplication :: a -> Application m
-
-instance (MonadSnap m, a ~ m ()) => ToRawApplication (m) a where
-   toRawApplication app = snapToApplication app
-
 
 -- | Just pass the request to the underlying application and serve its response.
 --
@@ -636,18 +512,18 @@ instance (MonadSnap m, a ~ m ()) => ToRawApplication (m) a where
 --instance (ToRawApplication a, MonadSnap m) => HasServer (Raw m a) where
 --instance ToRawApplication a => HasServer (Raw m a) where
 --instance forall m a n.(MonadSnap m, m ~ n) => HasServer (Raw m (n a)) where
-instance (ToRawApplication m a, a ~ m ()) => HasServer (Raw m a) where
+instance HasServer Raw where
 --instance ToRawApplication a => HasServer (Raw m a) where
 
   --type ServerT (Raw n a) m = Raw n (Application m)
-  type ServerT (Raw m a) n = n ()
+  type ServerT Raw m = m ()
 
   -- route :: Proxy layout -> IO (RouteResult (Server layout)) -> Router
   route Proxy rawApplication = LeafRouter $ \ request respond -> do
     r <- rawApplication
     case r of
       RR (Left err)      -> respond $ failWith err
-      RR (Right rawApp) -> (toRawApplication rawApp) request (respond . succeedWith)
+      RR (Right rawApp) -> (snapToApplication rawApp )request (respond . succeedWith)
 
 
 -- | If you use 'ReqBody' in one of the endpoints for your API,

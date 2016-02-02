@@ -35,5 +35,5 @@ import qualified Snap.Util.FileServe               as Snap
 -- behind a /\/static\// prefix. In that case, remember to put the 'serveDirectory'
 -- handler in the last position, because /servant/ will try to match the handlers
 -- in order.
-serveDirectory :: MonadSnap m => FilePath -> Server (Raw a (m ())) m
+serveDirectory :: MonadSnap m => FilePath -> Server Raw m
 serveDirectory fp = liftSnap $ Snap.serveDirectory fp
