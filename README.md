@@ -26,7 +26,7 @@ curl localhost:8001/api/hello/DearUser
 
 ## Getting started
 
-We've written a [Getting Started](http://haskell-servant.github.io/getting-started/) guide that introduces the core types and features of servant. After this article, you should be able to write your first servant webservices, learning the rest from the haddocks' examples.
+We've written a [tutorial](http://haskell-servant.github.io/tutorial/) that introduces the core types and features of servant. After this article, you should be able to write your first servant webservices, learning the rest from the haddocks' examples.
 
 ## Repositories and Haddocks
 
