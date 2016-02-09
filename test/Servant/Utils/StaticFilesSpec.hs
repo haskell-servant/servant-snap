@@ -15,7 +15,7 @@ import Test.Hspec.Snap
 import Servant.API (JSON)
 import Servant.API.Alternative ((:<|>)((:<|>)))
 import Servant.API.Capture (Capture)
-import Servant.API.Get (Get)
+import Servant.API.Verbs
 import Servant.API.Raw (Raw)
 import Servant.API.Sub ((:>))
 import Servant.Server (Server, serve)

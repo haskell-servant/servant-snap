@@ -30,11 +30,12 @@ import           Test.Hspec.Core.Spec (Result(..))
 import           Test.Hspec.Snap            hiding (NotFound)
 import           Servant.API                ((:<|>) (..), (:>),
                                              addHeader, Capture,
-                                             Delete, Get, Header (..), Headers,
-                                             JSON, MatrixFlag, MatrixParam,
-                                             MatrixParams, Patch, PlainText,
-                                             Post, Put, QueryFlag, QueryParam,
+                                             Header (..), Headers,
+                                             JSON, 
+                                             PlainText,
+                                             QueryFlag, QueryParam,
                                              QueryParams, Raw, ReqBody)
+import           Servant.API.Verbs
 import           Servant.Server             (Server, serve)
 import           Servant.Server.Internal    (HasServer)
 import           Servant.Server.Internal.SnapShims
@@ -96,7 +97,6 @@ spec = do
   putSpec
   -- patchSpec
   queryParamSpec
-  matrixParamSpec
   headerSpec
   rawSpec
   unionSpec
@@ -117,11 +117,11 @@ captureServer legs = case legs of
   2 -> return tweety
   _ -> finishWith (setResponseCode 404 emptyResponse)
 
-type CaptureApi2 = Capture "captured" String :> Raw AppHandler (AppHandler ())
+type CaptureApi2 = Capture "captured" String :> Raw
 captureApi2 :: Proxy CaptureApi2
 captureApi2 = Proxy
 
-captureServer2 :: String  -> Server (Raw [] Bool) AppHandler
+captureServer2 :: String  -> Server Raw AppHandler
 captureServer2 _ = do
   r <- getRequest
   writeBS (rqPathInfo r)
@@ -241,51 +241,9 @@ queryParamSpec = snap (route (routes queryParamApi qpServer)) app $ do
 
 
 
-type MatrixParamApi = "a" :> MatrixParam "name" String :> Get '[JSON] Person
-                :<|> "b" :> MatrixParams "names" String :> "bsub" :> MatrixParams "names" String :> Get '[JSON] Person
-                :<|> "c" :> MatrixFlag "capitalize" :> Get '[JSON] Person
-                :<|> "d" :> Capture "foo" Integer :> MatrixParam "name" String :> MatrixFlag "capitalize" :> "dsub" :> Get '[JSON] Person
-
-matrixParamApi :: Proxy MatrixParamApi
-matrixParamApi = Proxy
-
-mpServer :: Server MatrixParamApi AppHandler
-mpServer = matrixParamServer :<|> mpNames :<|> mpCapitalize alice :<|> mpComplex
-  where mpNames (_:name2:_) _ = return alice { name = name2 }
-        mpNames _           _ = return alice
-
-        mpCapitalize p False = return p
-        mpCapitalize p True  = return p { name = map toUpper (name p) }
-
-        matrixParamServer (Just name) = return alice{name = name}
-        matrixParamServer Nothing = return alice
-
-        mpAge age p = return p { age = age }
-        mpComplex capture name cap = matrixParamServer name >>= flip mpCapitalize cap >>= mpAge capture
-
 shouldDecodeTo (Json _ bs) v = decode' bs `shouldEqual` Just v
 shouldDecodeTo _           _ = setResult (Fail Nothing "Should have been json body")
 
-matrixParamSpec :: Spec
-matrixParamSpec = snap (route (routes matrixParamApi mpServer)) app $ do
-  describe "Servant.API.MatrixParam" $ do
-      it "allows to retrieve simple matrix parameters" $ do
-          get "a;name=bob" >>= (`shouldDecodeTo` alice {name="bob"})
-
-      it "allows to retrieve lists in matrix parameters" $
-          get "b;names=bob;names=john/bsub;names=anna;names=sarah" >>= (`shouldDecodeTo` alice{name="john"})
-
-      it "allows to retrieve value-less matrix parameters" $
-          get "c;capitalize" >>= (`shouldDecodeTo` alice{name="ALICE"})
-
-      it "allows to retrieve value-less matrix parameters" $
-          get "c;capitalize=" >>= (`shouldDecodeTo` alice{name="ALICE"})
-
-      it "allows to retrieve matrix parameters on captured segments" $
-         get "d/12;name=stephen;capitalize/dsub" >>= (`shouldDecodeTo` alice{name="STEPHEN"})
-
-      it "allows to retrieve matrix parameters on captured segments" $
-         get "d;ignored=1/5/dsub" >>= (`shouldDecodeTo` alice{name="STEPHEN"})
 
 type PostApi =
        ReqBody '[JSON] Person :> Post '[JSON] Integer
@@ -442,12 +400,12 @@ headerSpec = do
             post' "/"  >>= (`shouldEqual` (Other 204))
 
 
-type RawApi = "foo" :> Raw AppHandler (Handler App App ())
+type RawApi = "foo" :> Raw
 rawApi :: Proxy RawApi
 rawApi = Proxy
 --rawApplication :: Show a => (Request -> a) -> Application
 --rawApplication f request_ respond = respond $ responseLBS ok200 [] (cs $ show $ f request_)
-rawApplication :: Server (Raw AppHandler (AppHandler ())) AppHandler
+rawApplication :: Server Raw AppHandler
 rawApplication = do
   b <- readRequestBody 1000
   writeBS (BL.toStrict b)
