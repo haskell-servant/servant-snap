@@ -73,7 +73,7 @@ library
   default-language: Haskell2010
   ghc-options: -Wall
 
-executable greet
+executable snap-greet
   main-is: greet.hs
   hs-source-dirs: example
   ghc-options: -Wall
