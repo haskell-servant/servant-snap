@@ -560,7 +560,7 @@ instance ( AllCTUnrender list a, HasServer sublayout
       -- http://www.w3.org/2001/tag/2002/0129-mime
       let contentTypeH = fromMaybe "application/octet-stream"
                        $ getHeader (mk "Content-Type") request
-      rBody <- readRequestBody 10000
+      rBody <- readRequestBody 10000000
       mrqbody <- handleCTypeH (Proxy :: Proxy list) (cs contentTypeH)
                  <$> return rBody -- lazyRequestBody request
       case mrqbody of
