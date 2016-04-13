@@ -8,14 +8,25 @@ This library lets you *implement* an HTTP server with handlers for each endpoint
 
 ## Building
 
-We target the soon-to-be-released [snap-1.0](http://github.com/snapframework/snap) and a WIP branch of [servant-0.5](http://github.com/codedmart/servant). To get all the necessary dependencies, clone the servant-snap repository, and within that directory, run
+We target the soon-to-be-released [snap-1.0](http://github.com/snapframework/snap) and latest branch of [servant-0.6](http://github.com/codedmart/servant). Clone the `servant-snap` repository, and within that directory, run
+
+### Stack
+
+If you're [stack]() user just use
+
+```
+stack build
+``
+
+### Cabal 
+
+If you're using Cabal you need fetch all related dependencies first with following commands
 
 ```bash
 git submodule update --init --recursive
 ./init-sandbox.sh
 ```
-
-Then, build the library and example server:
+Then, build the library and example server, with
 
 ```
 cabal install --only-dep
@@ -27,6 +38,8 @@ curl localhost:8001/api/hello/DearUser
 ## Getting started
 
 We've written a [tutorial](http://haskell-servant.github.io/tutorial/) that introduces the core types and features of servant. After this article, you should be able to write your first servant webservices, learning the rest from the haddocks' examples.
+
+If you like to know how to use this package within your project, read [tutorial]() and look at example project.
 
 ## Repositories and Haddocks
 
