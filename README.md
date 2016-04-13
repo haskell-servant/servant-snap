@@ -16,7 +16,11 @@ If you're [stack]() user just use
 
 ```
 stack build
-``
+```
+if want to have it globally
+```
+stack install
+```
 
 ### Cabal 
 
