@@ -13,3 +13,6 @@
 [submodule "deps/servant"]
 	path = deps/servant
 	url = https://github.com/haskell-servant/servant
+[submodule "deps/clock"]
+	path = deps/clock
+	url = https://github.com/corsis/clock
