@@ -9,7 +9,7 @@
 	url = https://github.com/snapframework/snap-loader-static
 [submodule "deps/hspec-snap"]
 	path = deps/hspec-snap
-	url = https://github.com/dbp/hspec-snap
+	url = https://github.com/imalsogreg/hspec-snap
 [submodule "deps/servant"]
 	path = deps/servant
 	url = https://github.com/haskell-servant/servant
