@@ -43,7 +43,6 @@ packages:
 extra-deps:
    - aeson-0.11.1.4
    - base-orphans-0.5.4
-   - clock-0.5.1
    - text-1.2.2.1
 
 # Override default flag values for local packages and extra-deps
