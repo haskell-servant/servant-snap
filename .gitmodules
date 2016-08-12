@@ -1,3 +1,0 @@
-[submodule "deps/hspec-snap"]
-	path = deps/hspec-snap
-	url = https://github.com/imalsogreg/hspec-snap
