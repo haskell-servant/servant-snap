@@ -1,39 +1,39 @@
 # Specifies the GHC version and set of packages available (e.g., lts-3.5, nightly-2015-09-21, ghc-7.10.2)
-resolver: lts-6.10
+resolver: lts-6.12
 
 # Local packages, usually specified by relative directory name
 packages:
 - '.'
 - location:
     git: https://github.com/snapframework/heist.git
-    commit: 829fc6133d328de8e7af1675832e42658c5da387
+    commit: b27e744cb394f5bbf41f3fb0f56205bc503d9039
 - location:
     git: https://github.com/snapframework/io-streams-haproxy.git
-    commit: ab208d49fe73c9cf05e46c0d929eec311fb0cfd9
+    commit: 0a64cba062a0049d9dcdc438aa9758a843c8dfae
 - location:
     git: https://github.com/snapframework/snap-server.git
-    commit: f2c4ced4f3414a3a2e7eaf422c5002a8decb2512
+    commit: ffd0e8d33711fb2dc1da5c30a9d38d9314b5cb6c
 - location:
     git: https://github.com/snapframework/snap-core.git
-    commit: 3f7bee971c0c338886bd52235c85bc087f856ae5
+    commit: b843d2b24985ad4942354b99c0b7832b3cb366bd
 - location:
     git: https://github.com/snapframework/snap.git
-    commit: 20d4ff5fa805c2488187fdace66379d50e62172a
+    commit: a6064a7630c14fdcc3093264d35a8df4ce82a64a
 - location:
     git: https://github.com/haskell-servant/servant.git
-    commit: ba57d2000895ca223825f785f1cebe2c9d76ebef
+    commit: 6999b002977fa1a726ea627f716e47c677047713
   subdirs:
-  - servant-blaze  
+#  - servant-blaze  
   - servant
 - location:
     git: https://github.com/dbp/hspec-snap.git
-    commit: a09c22cd49affbd883236ffb13643642869c6863
+    commit: 5c55326a6e4cbefa5374700a33aad594bd25c8b2
 - location:
     git: https://github.com/snapframework/snap-loader-dynamic.git
-    commit: 32680dc0b8f65eecefacfbb17e35df61f7fe3a7d
+    commit: 98047f0f1b95ed3b54d8bf117258bd001f6f5f8b
 - location:
     git: https://github.com/snapframework/snap-loader-static.git
-    commit: 4df25f78d96a4cecab747452001a8f7523be9b77  
+    commit: a31b7a418894d944cf9ff52262e213f9d5cea437  
            
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
 
