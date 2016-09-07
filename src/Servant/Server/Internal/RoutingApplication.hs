@@ -21,6 +21,7 @@ import           Data.Maybe                          (fromMaybe)
 import           Data.Monoid                         ((<>))
 import           Data.String                         (fromString)
 import           GHC.Int                             (Int64)
+import           Network.HTTP.Types                  (Status(..))
 import qualified System.IO.Streams                   as Streams
 import           Servant.API                         ((:<|>) (..))
 import           Servant.Server.Internal.ServantErr

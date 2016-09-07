@@ -8,7 +8,7 @@ module Servant.Utils.StaticFilesSpec where
 import Control.Exception (bracket)
 import Data.Proxy (Proxy(Proxy))
 import System.Directory (getCurrentDirectory, setCurrentDirectory, createDirectory)
-import System.IO.Temp (withSystemTempDirectory)
+-- import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec (Spec, describe, it, around_)
 import Test.Hspec.Snap
 

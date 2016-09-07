@@ -23,6 +23,7 @@ import           Data.String.Conversions    (cs)
 import qualified Data.Text                  as T
 import qualified Data.Text.Encoding         as T
 import           GHC.Generics               (Generic)
+import           Network.HTTP.Types         (Status(..))
 import           Snap.Core                  hiding (Headers, addHeader)
 import           Snap.Snaplet
 import           Test.Hspec
@@ -31,7 +32,7 @@ import           Test.Hspec.Snap            hiding (NotFound)
 import           Servant.API                ((:<|>) (..), (:>),
                                              addHeader, Capture,
                                              Header (..), Headers,
-                                             JSON, 
+                                             JSON, NoContent(..),
                                              PlainText,
                                              QueryFlag, QueryParam,
                                              QueryParams, Raw, ReqBody)
@@ -92,7 +93,7 @@ routes p s = [("", applicationToSnap (serve p s))]
 spec :: Spec
 spec = do
   captureSpec
-  getSpec
+--  getSpec
   postSpec
   putSpec
   -- patchSpec
@@ -149,7 +150,7 @@ captureSpec = do
 
 
 type GetApi = Get '[JSON] Person
-        :<|> "empty" :> Get '[] ()
+        :<|> "empty" :> GetNoContent '[JSON] NoContent
 getApi :: Proxy GetApi
 getApi = Proxy
 
@@ -159,7 +160,8 @@ should405 (Other 405) = setResult Success
 should405 _ = setResult (Fail Nothing "Should have 405'd")
 
 getSpec :: Spec
-getSpec = snap (route (routes getApi (return alice :<|> return ()))) app $ do
+-- getSpec = snap (route (routes getApi ((return alice :: AppHandler Person) :<|> (return NoContent :: AppHandler NoContent)))) app $ do
+getSpec = snap (route (routes getApi (return alice :<|> return NoContent))) app $ do
   describe "Servant.API.Get" $ do
 
       it "allows to GET a Person" $ do
@@ -248,7 +250,7 @@ shouldDecodeTo _           _ = setResult (Fail Nothing "Should have been json bo
 type PostApi =
        ReqBody '[JSON] Person :> Post '[JSON] Integer
   :<|> "bla" :> ReqBody '[JSON] Person :> Post '[JSON] Integer
-  :<|> "empty" :> Post '[] ()
+  :<|> "empty" :> Post '[JSON] ()
 
 postApi :: Proxy PostApi
 postApi = Proxy
@@ -281,7 +283,7 @@ postSpec = snap (route (routes postApi pServer)) app $ do
 type PutApi =
        ReqBody '[JSON] Person :> Put '[JSON] Integer
   :<|> "bla" :> ReqBody '[JSON] Person :> Put '[JSON] Integer
-  :<|> "empty" :> Put '[] ()
+  :<|> "empty" :> Put '[JSON] ()
 
 putApi :: Proxy PutApi
 putApi = Proxy

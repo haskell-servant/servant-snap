@@ -31,20 +31,20 @@ import           Data.String.Conversions     (cs, (<>))
 import           Data.Text                   (Text)
 import qualified Data.Text                   as T
 import           Data.Text.Encoding          (decodeUtf8, encodeUtf8)
-import           GHC.TypeLits                (KnownSymbol, symbolVal)
-import           Network.HTTP.Types          (QueryText, parseQueryText)
+import           GHC.TypeLits                (KnownNat, KnownSymbol, natVal, symbolVal)
+import           Network.HTTP.Types          (Method, QueryText, Status(..), parseQueryText)
 import           Web.HttpApiData             (FromHttpApiData)
 import           Web.HttpApiData.Internal    (parseHeaderMaybe,
                                               parseQueryParamMaybe,
                                               parseUrlPieceMaybe)
-import           Snap.Core                   hiding (Headers, getHeaders,
+import           Snap.Core                   hiding (Headers, Method, getHeaders,
                                               getResponse, headers, route,
                                               method)
 import           Servant.API                 ((:<|>) (..), (:>), Capture,
                                                Delete, Get, Header,
                                               Patch, Post, Put,
                                               QueryFlag, QueryParam,
-                                              QueryParams, Raw(..), ReqBody)
+                                              QueryParams, Raw(..), ReqBody, ReflectMethod(..), Verb)
 import           Servant.API.ContentTypes    (AcceptHeader (..),
                                               AllCTRender (..),
                                               AllCTUnrender (..))
@@ -132,14 +132,14 @@ methodRouter :: (AllCTRender ctypes a, MonadSnap m)
 methodRouter method proxy status action = LeafRouter route'
   where
     route' request respond
-      | pathIsEmpty request && rqMethod request == method = do
+      | pathIsEmpty request && unSnapMethod (rqMethod request) == method = do
           runAction action respond $ \ output -> do
             let accH = fromMaybe ct_wildcard $ getHeader (mk "Accept") request
             case handleAcceptH proxy (AcceptHeader accH) output of
               Nothing -> failWith UnsupportedMediaType
               Just (contentT, body) -> succeedWith $
                 responseLBS status [ ("Content-Type" , cs contentT)] body
-      | pathIsEmpty request && rqMethod request /= method =
+      | pathIsEmpty request && unSnapMethod (rqMethod request) /= method =
           respond $ failWith WrongMethod
       | otherwise = respond $ failWith NotFound
 
@@ -150,7 +150,7 @@ methodRouterHeaders :: (GetHeaders (Headers h v), AllCTRender ctypes v, MonadSna
 methodRouterHeaders method proxy status action = LeafRouter route'
   where
     route' request respond
-      | pathIsEmpty request && rqMethod request == method = do
+      | pathIsEmpty request && unSnapMethod (rqMethod request) == method = do
         runAction action respond $ \ output -> do
           let accH = fromMaybe ct_wildcard $ getHeader (mk "Accept") request
               headers = getHeaders output
@@ -158,7 +158,7 @@ methodRouterHeaders method proxy status action = LeafRouter route'
             Nothing -> failWith UnsupportedMediaType
             Just (contentT, body) -> succeedWith $
               responseLBS status ( ("Content-Type" , cs contentT) : headers) body
-      | pathIsEmpty request && rqMethod request /= method =
+      | pathIsEmpty request && unSnapMethod (rqMethod request) /= method =
           respond $ failWith WrongMethod
       | otherwise = respond $ failWith NotFound
 
@@ -168,90 +168,35 @@ methodRouterEmpty :: MonadSnap m => Method
 methodRouterEmpty method action = LeafRouter route'
   where
     route' request respond
-      | pathIsEmpty request && rqMethod request == method = do
+      | pathIsEmpty request && unSnapMethod (rqMethod request) == method = do
           runAction action respond $ \ () ->
             succeedWith $ responseLBS noContent204 [] ""
-      | pathIsEmpty request && rqMethod request /= method =
+      | pathIsEmpty request && unSnapMethod (rqMethod request) /= method =
           respond $ failWith WrongMethod
       | otherwise = respond $ failWith NotFound
 
--- | If you have a 'Delete' endpoint in your API,
--- the handler for this endpoint is meant to delete
--- a resource.
---
--- The code of the handler will, just like
--- for 'Servant.API.Get.Get', 'Servant.API.Post.Post' and
--- 'Servant.API.Put.Put', run in @EitherT ServantErr IO ()@.
--- The 'Int' represents the status code and the 'String' a message
--- to be returned. You can use 'Control.Monad.Trans.Either.left' to
--- painlessly error out if the conditions for a successful deletion
--- are not met.
-instance
-         {-# OVERLAPPABLE #-}
-         ( AllCTRender ctypes a
-         ) => HasServer (Delete ctypes a) where
 
-  type ServerT (Delete ctypes a) m = m a
+instance {-# OVERLAPPABLE #-} (AllCTRender ctypes a,
+                               ReflectMethod method,
+                               KnownNat status)
+  => HasServer (Verb method status ctypes a) where
+  type ServerT (Verb method status ctypes  a) m = m a
+  route Proxy = methodRouter method (Proxy :: Proxy ctypes) status
+    where method = reflectMethod (Proxy :: Proxy method)
+          status = toEnum . fromInteger $ natVal (Proxy :: Proxy status)
 
-  route Proxy = methodRouter DELETE (Proxy :: Proxy ctypes) ok200
+instance {-# OVERLAPPABLE #-} (AllCTRender ctypes a,
+                               ReflectMethod method,
+                               KnownNat status,
+                               GetHeaders (Headers h a))
+  => HasServer (Verb method status ctypes (Headers h a)) where
 
-instance
-         {-# OVERLAPPING #-}
-         HasServer (Delete ctypes ()) where
+  type ServerT (Verb method status ctypes (Headers h a)) m = m (Headers h a)
+  route Proxy = methodRouterHeaders method (Proxy :: Proxy ctypes) status
+    where method = reflectMethod (Proxy :: Proxy method)
+          status = toEnum . fromInteger $ natVal (Proxy :: Proxy status)
 
-  type ServerT (Delete ctypes ()) m = m ()
 
-  route Proxy = methodRouterEmpty DELETE
-
--- Add response headers
-instance
-         {-# OVERLAPPING #-}
-         ( GetHeaders (Headers h v), AllCTRender ctypes v
-         ) => HasServer (Delete ctypes (Headers h v)) where
-
-  type ServerT (Delete ctypes (Headers h v)) m = m (Headers h v)
-
-  route Proxy = methodRouterHeaders DELETE (Proxy :: Proxy ctypes) ok200
-
--- | When implementing the handler for a 'Get' endpoint,
--- just like for 'Servant.API.Delete.Delete', 'Servant.API.Post.Post'
--- and 'Servant.API.Put.Put', the handler code runs in the
--- @EitherT ServantErr IO@ monad, where the 'Int' represents
--- the status code and the 'String' a message, returned in case of
--- failure. You can quite handily use 'Control.Monad.Trans.EitherT.left'
--- to quickly fail if some conditions are not met.
---
--- If successfully returning a value, we use the type-level list, combined
--- with the request's @Accept@ header, to encode the value for you
--- (returning a status code of 200). If there was no @Accept@ header or it
--- was @*\/\*@, we return encode using the first @Content-Type@ type on the
--- list.
-instance
-         {-# OVERLAPPABLE #-}
-         ( AllCTRender ctypes a ) => HasServer (Get ctypes a) where
-
-  type ServerT (Get ctypes a) m = m a
-
-  route Proxy = methodRouter GET (Proxy :: Proxy ctypes) ok200
-
--- '()' ==> 204 No Content
-instance
-         {-# OVERLAPPING #-}
-          HasServer (Get ctypes ()) where
-
-  type ServerT (Get ctypes ()) m = m ()
-
-  route Proxy = methodRouterEmpty GET
-
--- Add response headers
-instance
-         {-# OVERLAPPING #-}
-          ( GetHeaders (Headers h v), AllCTRender ctypes v
-          ) => HasServer (Get ctypes (Headers h v)) where
-
-  type ServerT (Get ctypes (Headers h v)) m = m (Headers h v)
-
-  route Proxy = methodRouterHeaders GET (Proxy :: Proxy ctypes) ok200
 
 -- | If you use 'Header' in one of the endpoints for your API,
 -- this automatically requires your server-side handler to be a function
@@ -285,121 +230,7 @@ instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout)
     in  route (Proxy :: Proxy sublayout) (feedTo subserver mheader)
     where str = fromString $ symbolVal (Proxy :: Proxy sym)
 
--- | When implementing the handler for a 'Post' endpoint,
--- just like for 'Servant.API.Delete.Delete', 'Servant.API.Get.Get'
--- and 'Servant.API.Put.Put', the handler code runs in the
--- @EitherT ServantErr IO@ monad, where the 'Int' represents
--- the status code and the 'String' a message, returned in case of
--- failure. You can quite handily use 'Control.Monad.Trans.EitherT.left'
--- to quickly fail if some conditions are not met.
---
--- If successfully returning a value, we use the type-level list, combined
--- with the request's @Accept@ header, to encode the value for you
--- (returning a status code of 201). If there was no @Accept@ header or it
--- was @*\/\*@, we return encode using the first @Content-Type@ type on the
--- list.
-instance
-         {-# OVERLAPPABLE #-}
-         ( AllCTRender ctypes a
-         ) => HasServer (Post ctypes a) where
 
-  type ServerT (Post ctypes a) m = m a
-
-  route Proxy = methodRouter POST (Proxy :: Proxy ctypes) created201
-
-instance
-         {-# OVERLAPPING #-}
-         HasServer (Post ctypes ()) where
-
-  type ServerT (Post ctypes ()) m = m ()
-
-  route Proxy = methodRouterEmpty POST
-
--- Add response headers
-instance
-         {-# OVERLAPPING #-}
-         ( GetHeaders (Headers h v), AllCTRender ctypes v
-         ) => HasServer (Post ctypes (Headers h v)) where
-
-  type ServerT (Post ctypes (Headers h v)) m = m (Headers h v)
-
-  route Proxy = methodRouterHeaders POST (Proxy :: Proxy ctypes) created201
-
--- | When implementing the handler for a 'Put' endpoint,
--- just like for 'Servant.API.Delete.Delete', 'Servant.API.Get.Get'
--- and 'Servant.API.Post.Post', the handler code runs in the
--- @EitherT ServantErr IO@ monad, where the 'Int' represents
--- the status code and the 'String' a message, returned in case of
--- failure. You can quite handily use 'Control.Monad.Trans.EitherT.left'
--- to quickly fail if some conditions are not met.
---
--- If successfully returning a value, we use the type-level list, combined
--- with the request's @Accept@ header, to encode the value for you
--- (returning a status code of 200). If there was no @Accept@ header or it
--- was @*\/\*@, we return encode using the first @Content-Type@ type on the
--- list.
-instance
-         {-# OVERLAPPABLE #-}
-         ( AllCTRender ctypes a) => HasServer (Put ctypes a) where
-
-  type ServerT (Put ctypes a) m = m a
-
-  route Proxy = methodRouter PUT (Proxy :: Proxy ctypes) ok200
-
-instance
-         {-# OVERLAPPING #-}
-         HasServer (Put ctypes ()) where
-
-  type ServerT (Put ctypes ()) m = m ()
-
-  route Proxy = methodRouterEmpty PUT
-
--- Add response headers
-instance
-         {-# OVERLAPPING #-}
-         ( GetHeaders (Headers h v), AllCTRender ctypes v
-         ) => HasServer (Put ctypes (Headers h v)) where
-
-  type ServerT (Put ctypes (Headers h v)) m = m (Headers h v)
-
-  route Proxy = methodRouterHeaders PUT (Proxy :: Proxy ctypes) ok200
-
--- | When implementing the handler for a 'Patch' endpoint,
--- just like for 'Servant.API.Delete.Delete', 'Servant.API.Get.Get'
--- and 'Servant.API.Put.Put', the handler code runs in the
--- @EitherT ServantErr IO@ monad, where the 'Int' represents
--- the status code and the 'String' a message, returned in case of
--- failure. You can quite handily use 'Control.Monad.Trans.EitherT.left'
--- to quickly fail if some conditions are not met.
---
--- If successfully returning a value, we just require that its type has
--- a 'ToJSON' instance and servant takes care of encoding it for you,
--- yielding status code 200 along the way.
-instance
-         {-# OVERLAPPABLE #-}
-         ( AllCTRender ctypes a) => HasServer (Patch ctypes a) where
-
-  type ServerT (Patch ctypes a) m = m a
-
-  route Proxy = methodRouter PATCH (Proxy :: Proxy ctypes) ok200
-
-instance
-         {-# OVERLAPPING #-}
-          HasServer (Patch ctypes ()) where
-
-  type ServerT (Patch ctypes ()) m = m ()
-
-  route Proxy = methodRouterEmpty PATCH
-
--- Add response headers
-instance
-         {-# OVERLAPPING #-}
-         ( GetHeaders (Headers h v), AllCTRender ctypes v
-         ) => HasServer (Patch ctypes (Headers h v)) where
-
-  type ServerT (Patch ctypes (Headers h v)) m = m (Headers h v)
-
-  route Proxy = methodRouterHeaders PATCH (Proxy :: Proxy ctypes) ok200
 
 -- | If you use @'QueryParam' "author" Text@ in one of the endpoints for your API,
 -- this automatically requires your server-side handler to be a function

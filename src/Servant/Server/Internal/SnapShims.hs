@@ -2,7 +2,8 @@
 
 module Servant.Server.Internal.SnapShims where
 
-import qualified Data.ByteString        as B
+import qualified Data.ByteString.Char8 as B
+import           Network.HTTP.Types (Status(..))
 import           Data.IORef
 import           Snap.Core
 
@@ -25,10 +26,13 @@ applicationToSnap app = do
   r <- app req return
   putResponse r
 
-data Status = Status {
-    statusCode    :: Int
-  , statusMessage :: B.ByteString
-} deriving (Eq, Show, Ord)
+unSnapMethod :: Method -> B.ByteString
+unSnapMethod = B.pack . show
+
+-- data Status = Status {
+--     statusCode    :: Int
+--   , statusMessage :: B.ByteString
+-- } deriving (Eq, Show, Ord)
 
 ok200 :: Status
 ok200 = Status 200 "OK"
