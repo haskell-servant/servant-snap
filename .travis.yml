@@ -70,8 +70,8 @@ script:
  - cabal configure --enable-tests --enable-benchmarks -v2  # -v2 provides useful information for debugging
  - cabal build   # this builds all libraries and executables (including tests/benchmarks)
  - cabal build test:spec
- # For now, just build the test-suite. Don't bother running it yet
  # - cabal test
+ # For now, just run the tests
  # - cabal check
  # - cabal sdist   # tests that a source-distribution can be generated
 

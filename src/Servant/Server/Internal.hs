@@ -297,10 +297,18 @@ instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout)
   route Proxy subserver = WithRequest $ \ request ->
     route (Proxy :: Proxy sublayout) (feedTo subserver (values request))
     where
-      paramName     = cs $ symbolVal (Proxy :: Proxy sym)
-      paramsBare r = concat $ rqQueryParam paramName r
-      paramsBrak r = concat $ rqQueryParam (paramName <> "[]") r
-      values     r = mapMaybe (parseQueryParamMaybe . decodeUtf8) $ paramsBare r <> paramsBrak r
+      paramName    = cs $ symbolVal (Proxy :: Proxy sym)
+      looksLikeParam (name,_) = name == paramName || name == ("paramName" <> "[]")
+      convert Nothing = Nothing
+      convert (Just v) = parseQueryParamMaybe v
+
+      querytext r = parseQueryText $ rqQueryString r
+      parameters r = filter looksLikeParam (querytext r)
+      values r = mapMaybe (convert . snd) (parameters r)
+
+      -- paramsBare r = mconcat $ rqQueryParam paramName r
+      -- paramsBrak r = concat $ rqQueryParam (paramName <> "[]") r
+      -- values     r = mapMaybe (parseQueryParamMaybe . decodeUtf8) $ paramsBare r <> paramsBrak r
 
 
 -- | If you use @'QueryFlag' "published"@ in one of the endpoints for your API,
