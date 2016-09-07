@@ -14,7 +14,6 @@ import           Control.Monad              (forM_, when)
 import           Data.Aeson                 (FromJSON, ToJSON, decode', encode)
 import qualified Data.ByteString.Char8      as B8
 import qualified Data.ByteString.Lazy       as BL
-import           Data.ByteString.Conversion ()
 import           Data.Char                  (toUpper)
 import qualified Data.Map                   as Map
 import           Data.Monoid                ((<>))

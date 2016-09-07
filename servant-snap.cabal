@@ -49,7 +49,6 @@ library
       , bytestring         >= 0.10 && < 0.11
       , case-insensitive   >= 1.2  && < 1.3
       , containers         >= 0.5  && < 0.6
-      -- , contravariant      >= 1.3  && < 1.5
       , either             >= 4.3  && < 4.5
       , http-types         >= 0.8  && < 0.10
       , http-api-data      >= 0.2  && < 0.4
@@ -57,11 +56,8 @@ library
       , network-uri        >= 2.6  && < 2.7
       , mtl                >= 2.0  && < 2.3
       , mmorph             >= 1    && < 1.1
-      -- , safe               >= 0.3  && < 0.4
       , servant            >= 0.6  && < 0.9
-      -- , split              >= 0.2  && < 0.3
       , string-conversions >= 0.3  && < 0.5
-      , system-filepath    >= 0.4  && < 0.5
       , filepath           >= 1    && < 1.5
       , text               >= 1.2  && < 1.3
       , transformers       >= 0.3  && < 0.6
@@ -78,17 +74,15 @@ executable snap-greet
   ghc-options: -Wall
   default-language: Haskell2010
   build-depends:
-      base
-    , blaze-builder
+      aeson
+    , base
     , bytestring
     , either
     , errors
     , heist
     , lens
     , servant             >= 0.6
-    , servant-blaze       >= 0.6
     , servant-snap
-    , aeson
     , map-syntax
     , snap
     , snap-core
@@ -107,7 +101,6 @@ test-suite spec
       base == 4.*
     , aeson
     , bytestring
-    , bytestring-conversion
     , containers
     , directory
     , either
@@ -116,18 +109,18 @@ test-suite spec
     , hspec-snap >= 1.0 && < 1.1
     , hspec-core
     , http-types
+    , mtl
     , network >= 2.6
     , QuickCheck
     , parsec
     , servant
     , servant-snap
-    , string-conversions
-    , text
-    , transformers
-    , mtl
     , snap
     , snap-core
     , snap-server
+    , string-conversions
+    , text
+    , transformers
 
 -- test-suite doctests
 --  build-depends: base
