@@ -24,6 +24,14 @@ responseServantErr ServantErr{..} =
   . setResponseStatus errHTTPCode (BS.pack errReasonPhrase)
   $ emptyResponse -- responseLBS status errHeaders errBody
 
+-- | Terminate request handling with a @ServantErr@ via @finishWith@
+throwError :: MonadSnap m => ServantErr -> m a
+throwError ServantErr{..} = do
+  modifyResponse $ setResponseStatus errHTTPCode (BS.pack errReasonPhrase)
+  modifyResponse $ setHeader "Content-Type" "application/json"
+  writeBS "null"
+  getResponse >>= finishWith
+
 err300 :: ServantErr
 err300 = ServantErr { errHTTPCode = 300
                     , errReasonPhrase = "Multiple Choices"

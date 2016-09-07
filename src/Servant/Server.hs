@@ -39,6 +39,7 @@ module Servant.Server
 
     -- * Default error type
   , ServantErr(..)
+  , throwError
     -- ** 3XX
   , err300
   , err301

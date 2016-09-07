@@ -18,7 +18,7 @@ import           Data.CaseInsensitive                (CI)
 import           Data.IORef                          (readIORef, writeIORef)
 import qualified Data.List                           as L
 import           Data.Maybe                          (fromMaybe)
-import           Data.Monoid                         ((<>))
+import           Data.Monoid                         (Monoid, (<>))
 import           Data.String                         (fromString)
 import           GHC.Int                             (Int64)
 import           Network.HTTP.Types                  (Status(..))
