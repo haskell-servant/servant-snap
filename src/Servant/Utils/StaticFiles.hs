@@ -9,8 +9,7 @@ module Servant.Utils.StaticFiles (
   serveDirectory,
  ) where
 
-import           Control.Monad.Trans.Class         (lift)
-import           Servant.API.Raw                   (Raw(..))
+import           Servant.API.Raw                   (Raw)
 import           Servant.Server                    (Server)
 import           Snap.Core
 import qualified Snap.Util.FileServe               as Snap

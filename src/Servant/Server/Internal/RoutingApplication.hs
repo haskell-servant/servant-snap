@@ -5,31 +5,21 @@
 {-# LANGUAGE TypeOperators              #-}
 module Servant.Server.Internal.RoutingApplication where
 
-import           Blaze.ByteString.Builder.ByteString (fromLazyByteString)
 import           Control.Applicative                 (Applicative, (<$>))
-import           Control.Monad.IO.Class              (MonadIO (..), liftIO)
-import           Control.Monad.Trans.Class           (lift)
-import           Control.Monad.Trans.Either          (EitherT, runEitherT)
 import qualified Data.ByteString                     as B
 import qualified Data.ByteString.Builder             as Builder
-import qualified Data.ByteString.Char8               as B8
 import qualified Data.ByteString.Lazy                as BL
 import           Data.CaseInsensitive                (CI)
-import           Data.IORef                          (readIORef, writeIORef)
 import qualified Data.List                           as L
 import           Data.Maybe                          (fromMaybe)
 import           Data.Monoid                         (Monoid(..), (<>))
 import           Data.String                         (fromString)
-import           GHC.Int                             (Int64)
 import           Network.HTTP.Types                  (Status(..))
 import qualified System.IO.Streams                   as Streams
 import           Servant.API                         ((:<|>) (..))
-import           Servant.Server.Internal.ServantErr
 import           Servant.Server.Internal.SnapShims
 import           Snap.Core
 import           Snap.Internal.Http.Types            (setResponseBody)
--- TODO IOStream for handling request body streams
--- import qualified Snap.Iteratee                       as I
 
 
 type RoutingApplication m =

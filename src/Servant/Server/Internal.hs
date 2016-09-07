@@ -20,31 +20,28 @@ module Servant.Server.Internal
   ) where
 
 import           Control.Applicative         ((<$>))
-import           Control.Monad.Trans.Either  (EitherT(..))
 import qualified Data.ByteString.Char8       as B
 import           Data.CaseInsensitive        (mk)
 import qualified Data.Map                    as M
-import           Data.Maybe                  (catMaybes, fromMaybe, mapMaybe)
+import           Data.Maybe                  (fromMaybe, mapMaybe)
 import           Data.Proxy
 import           Data.String                 (fromString)
 import           Data.String.Conversions     (cs, (<>))
 import           Data.Text                   (Text)
-import qualified Data.Text                   as T
-import           Data.Text.Encoding          (decodeUtf8, encodeUtf8)
+import           Data.Text.Encoding          (decodeUtf8)
 import           GHC.TypeLits                (KnownNat, KnownSymbol, natVal, symbolVal)
-import           Network.HTTP.Types          (Method, QueryText, Status(..), parseQueryText)
+import           Network.HTTP.Types          (Method, Status(..), parseQueryText)
 import           Web.HttpApiData             (FromHttpApiData)
 import           Web.HttpApiData.Internal    (parseHeaderMaybe,
                                               parseQueryParamMaybe,
                                               parseUrlPieceMaybe)
-import           Snap.Core                   hiding (Headers, Method, getHeaders,
+import           Snap.Core                   hiding (Headers, Method,
                                               getResponse, headers, route,
                                               method)
 import           Servant.API                 ((:<|>) (..), (:>), Capture,
-                                               Delete, Get, Header,
-                                              Patch, Post, Put,
-                                              QueryFlag, QueryParam,
-                                              QueryParams, Raw(..), ReqBody, ReflectMethod(..), Verb)
+                                               Header,
+                                               QueryFlag, QueryParam,
+                                              QueryParams, Raw, ReqBody, ReflectMethod(..), Verb)
 import           Servant.API.ContentTypes    (AcceptHeader (..),
                                               AllCTRender (..),
                                               AllCTUnrender (..))
@@ -110,7 +107,7 @@ captured _ = parseUrlPieceMaybe
 -- > server = getBook
 -- >   where getBook :: Text -> EitherT ServantErr IO Book
 -- >         getBook isbn = ...
-instance (KnownSymbol capture, FromHttpApiData a, HasServer sublayout)
+instance (FromHttpApiData a, HasServer sublayout)
       => HasServer (Capture capture a :> sublayout) where
 
   type ServerT (Capture capture a :> sublayout) m =
