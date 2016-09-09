@@ -106,12 +106,13 @@ test-suite spec
     , either
     , exceptions
     , hspec >= 2.2.3 && < 2.4
+    , hspec-snap >= 1.0 && < 1.1
+    , hspec-core
+
 
   if impl(ghcjs)
     build-depends:
-        hspec-snap >= 1.0 && < 1.1
-      , hspec-core
-      , http-types
+        http-types
       , mtl
       , network >= 2.6
       , QuickCheck
