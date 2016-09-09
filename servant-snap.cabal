@@ -104,10 +104,11 @@ test-suite spec
     , containers
     , directory
     , either
+    , exceptions
+    , hspec >= 2.2.3 && < 2.4
+
   if impl(ghcjs)
     build-depends:
-        exceptions
-      , hspec >= 2.2.3 && < 2.4
       , hspec-snap >= 1.0 && < 1.1
       , hspec-core
       , http-types
