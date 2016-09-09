@@ -108,24 +108,19 @@ test-suite spec
     , hspec >= 2.2.3 && < 2.4
     , process
     , time
-
-
-  if impl(ghcjs)
-    build-depends:
-
-        hspec-snap >= 1.0 && < 1.1
-      , hspec-core == 2.2.3
-      , http-types
-      , digestive-functors == 0.8.1.0
-      , mtl
-      , network >= 2.6
-      , QuickCheck
-      , parsec
-      , servant
-      , servant-snap
-      , snap
-      , snap-core
-      , snap-server
-      , string-conversions
-      , text
-      , transformers
+    , hspec-snap >= 1.0 && < 1.1
+    , hspec-core == 2.2.3
+    , http-types
+    , digestive-functors == 0.8.1.0
+    , mtl
+    , network >= 2.6
+    , QuickCheck
+    , parsec
+    , servant
+    , servant-snap
+    , snap
+    , snap-core
+    , snap-server
+    , string-conversions
+    , text
+    , transformers
