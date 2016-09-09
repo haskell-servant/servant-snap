@@ -110,7 +110,7 @@ test-suite spec
     , hspec-snap >= 1.0 && < 1.1
     , hspec-core == 2.2.3
     , process == 1.4.2.0
-    , time == 1.6.0.1
+    , time >= 1.5 && < 1.6
 
 
   if impl(ghcjs)
