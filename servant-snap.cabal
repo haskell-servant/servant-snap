@@ -102,15 +102,15 @@ test-suite spec
     , aeson
     , bytestring
     , containers
-    , digestive-functors == 0.8.0.1
-    , directory == 1.2.6.2
+    , digestive-functors == 0.8.1.0
+    , directory
     , either
     , exceptions
     , hspec >= 2.2.3 && < 2.4
     , hspec-snap >= 1.0 && < 1.1
     , hspec-core == 2.2.3
-    , process == 1.4.2.0
-    , time >= 1.5 && < 1.6
+    , process
+    , time
 
 
   if impl(ghcjs)
