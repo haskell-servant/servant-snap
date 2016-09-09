@@ -102,13 +102,14 @@ test-suite spec
     , aeson
     , bytestring
     , containers
-    , directory >= 1.2.6 && < 1.2.7
+    , directory == 1.2.6.2
     , either
     , exceptions
     , hspec >= 2.2.3 && < 2.4
     , hspec-snap >= 1.0 && < 1.1
-    , hspec-core
-    , time == 1.5.0.1
+    , hspec-core == 2.2.3
+    , process == 1.4.2.0
+    , time == 1.6.0.1
 
 
   if impl(ghcjs)
