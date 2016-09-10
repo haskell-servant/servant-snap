@@ -10,9 +10,10 @@ module Servant.Utils.StaticFiles (
  ) where
 
 import           Servant.API.Raw                   (Raw)
-import           Servant.Server                    (Server)
+import           Servant.Server                    (Server, toApplication)
 import           Snap.Core
 import qualified Snap.Util.FileServe               as Snap
+import           Servant.Server.Internal.SnapShims
 
 -- | Serve anything under the specified directory as a 'Raw' endpoint.
 --

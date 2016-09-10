@@ -30,6 +30,9 @@ reqSafeTail r = let (ctx,inf) = pathSafeTail r
                       , rqPathInfo    = B.intercalate "/" inf
                       }
 
+reqNoPath :: Request -> Request
+reqNoPath r = r {rqPathInfo = ""}
+
 -- | Like `null . pathInfo`, but works with redundant trailing slashes.
 pathIsEmpty :: Request -> Bool
 pathIsEmpty = f . processedPathInfo

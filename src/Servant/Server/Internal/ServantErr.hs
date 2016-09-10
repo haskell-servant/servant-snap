@@ -12,7 +12,7 @@ data ServantErr = ServantErr { errHTTPCode     :: Int
                              , errReasonPhrase :: String
                              , errBody         :: LBS.ByteString
                              , errHeaders      :: [HTTP.Header]
-                             } deriving (Show, Eq)
+                             } deriving (Show, Eq, Read)
 
 setHeaders :: [HTTP.Header] -> Response -> Response
 setHeaders hs r =

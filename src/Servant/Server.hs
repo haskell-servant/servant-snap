@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP               #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE TypeFamilies      #-}
 
 -- | This module lets you implement 'Server's for defined APIs. You'll
@@ -76,7 +77,8 @@ module Servant.Server
 
   ) where
 
-import           Data.Proxy                        (Proxy)
+import           Data.Proxy                        (Proxy(..))
+import qualified Data.Text                         as T
 import           Servant.Server.Internal
 import           Servant.Server.Internal.Enter
 import           Servant.Server.Internal.SnapShims
@@ -108,11 +110,17 @@ import           Snap.Core                         hiding (route)
 --
 
 serve
-  :: (HasServer layout, MonadSnap m)
+  :: forall layout m.(HasServer layout, MonadSnap m)
   => Proxy layout
   -> Server layout m
   -> Application m
-serve p server = toApplication (runRouter (route p (return (RR (Right server)))))
+serve p server = toApplication (runRouter (route p (emptyDelayed (Proxy :: Proxy (m :: * -> *)) ((Route server)))))
+
+{-
+layout :: (HasServer api) => Proxy api -> T.Text
+layout p =
+  routerLayout (route p (emptyDelayed (FailFatal err501)))
+-}
 
 
 -- Documentation

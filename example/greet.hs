@@ -78,8 +78,12 @@ testApi = Proxy
 
 
 server :: Server (TestApi AppHandler) AppHandler
-server = helloH :<|> helloH' :<|> postGreetH :<|> deleteGreetH
-         :<|> serveDirectory "static" :<|> doRaw
+server = helloH
+    :<|> helloH'
+    :<|> postGreetH
+    :<|> deleteGreetH
+    :<|> serveDirectory "static"
+    :<|> doRaw
 
   where helloH :: MonadSnap m => Text -> Maybe Bool -> m Greet
         helloH name Nothing = helloH name (Just False)
@@ -97,7 +101,7 @@ server = helloH :<|> helloH' :<|> postGreetH :<|> deleteGreetH
 
         deleteGreetH _ = return ()
 
-        doRaw :: Server Raw (Handler App App)
+        -- doRaw :: Server Raw (Handler App App)
         doRaw = with auth $ do
           u <- currentUser
           let spl = "tName" ## I.textSplice (maybe "NoLogin" (pack . show) u)
