@@ -18,7 +18,7 @@ import Servant.API.Capture (Capture)
 import Servant.API.Verbs
 import Servant.API.Raw (Raw)
 import Servant.API.Sub ((:>))
-import Servant.Server (Server, serve)
+import Servant.Server (Server, serveSnap)
 import Servant.Server.Internal.SnapShims (Application)
 import Servant.ServerSpec (Person(Person))
 import Servant.Utils.StaticFiles (serveDirectory)

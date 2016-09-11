@@ -7,8 +7,8 @@
 -- | This module lets you implement 'Server's for defined APIs. You'll
 -- most likely just need 'serve'.
 module Servant.Server
-  ( -- * Run a wai application from an API
-    serve
+  ( -- * Run a snap handler from an API
+    serveSnap
 
   , -- * Construct a wai Application from an API
     toApplication
@@ -109,12 +109,19 @@ import           Snap.Core                         hiding (route)
 -- > main = Network.Wai.Handler.Warp.run 8080 app
 --
 
-serve
+serveApplication
   :: forall layout m.(HasServer layout, MonadSnap m)
   => Proxy layout
   -> Server layout m
   -> Application m
-serve p server = toApplication (runRouter (route p (emptyDelayed (Proxy :: Proxy (m :: * -> *)) ((Route server)))))
+serveApplication p server = toApplication (runRouter (route p (emptyDelayed (Proxy :: Proxy (m :: * -> *)) ((Route server)))))
+
+serveSnap
+  :: forall layout m.(HasServer layout, MonadSnap m)
+  => Proxy layout
+  -> Server layout m
+  -> m ()
+serveSnap p server = applicationToSnap $ serveApplication p server
 
 {-
 layout :: (HasServer api) => Proxy api -> T.Text

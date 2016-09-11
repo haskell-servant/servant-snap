@@ -1,5 +1,5 @@
 name:                servant-snap
-version:             0.6
+version:             0.7
 synopsis:            A family of combinators for defining webservices APIs and serving them
 description:
   Interpret a Servant API as a Snap server, using any Snaplets you like.
@@ -102,7 +102,9 @@ test-suite spec
   build-depends:
       base == 4.*
     , aeson
+    , base64-bytestring
     , bytestring
+    , case-insensitive
     , containers
     , directory
     , either

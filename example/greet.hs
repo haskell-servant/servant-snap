@@ -111,8 +111,8 @@ server = helloH
 -- Turn the server into a WAI app. 'serve' is provided by servant,
 -- more precisely by the Servant.Server module.
 --test :: MonadSnap m => Application m
-test :: Application AppHandler
-test = serve testApi server
+test :: AppHandler ()
+test = serveSnap testApi server
 
 
 instance HasHeist App where
@@ -123,7 +123,7 @@ initApp = makeSnaplet "myapp" "An example app in servant" Nothing $ do
   h <- nestSnaplet "" heist $ heistInit "templates"
   s <- nestSnaplet "sess" sess $ initCookieSessionManager "site_key.txt" "sess" Nothing (Just 3600)
   a <- nestSnaplet "" auth $ initJsonFileAuthManager defAuthSettings sess "users.json"
-  addRoutes [("api", applicationToSnap test)]
+  addRoutes [("api", test)]
   return $ App h s a
 
 
