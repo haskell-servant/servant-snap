@@ -52,67 +52,15 @@ data RouteResult a =
   | Route !a
   deriving (Eq, Show, Read, Functor)
 
--- -- | A wrapper around @'Either' 'RouteMismatch' a@.
--- newtype RouteResult a =
---   RR { routeResult :: Either RouteMismatch a }
---   deriving (Eq, Show, Functor, Applicative)
-
--- -- | If we get a `Right`, it has precedence over everything else.
--- --
--- -- This in particular means that if we could get several 'Right's,
--- -- only the first we encounter would be taken into account.
--- instance Monoid (RouteResult a) where
---   mempty = RR $ Left mempty
-
---   RR (Left x)  `mappend` RR (Left y)  = RR $ Left (x <> y)
---   RR (Left _)  `mappend` RR (Right y) = RR $ Right y
---   r            `mappend` _            = r
-
--- -- Note that the ordering of the constructors has great significance! It
--- -- determines the Ord instance and, consequently, the monoid instance.
--- data RouteMismatch =
---     NotFound           -- ^ the usual "not found" error
---   | WrongMethod        -- ^ a more informative "you just got the HTTP method wrong" error
---   | UnsupportedMediaType -- ^ request body has unsupported media type
---   | InvalidBody String -- ^ an even more informative "your json request body wasn't valid" error
---   | HttpError Status (Maybe BL.ByteString)  -- ^ an even even more informative arbitrary HTTP response code error.
---   deriving (Eq, Ord, Show)
-
--- instance Monoid RouteMismatch where
---   mempty = NotFound
---   -- The following isn't great, since it picks @InvalidBody@ based on
---   -- alphabetical ordering, but any choice would be arbitrary.
---   --
---   -- "As one judge said to the other, 'Be just and if you can't be just, be
---   -- arbitrary'" -- William Burroughs
---   mappend = max
-
 
 toApplication :: forall m. MonadSnap m => RoutingApplication m -> Application m
 toApplication ra request respond = do
-  -- r <- ra request (routingRespond . routeResult)
-  -- respond r
   r <- ra request routingRespond
   respond r
-
    where
      routingRespond (Fail err) = respond $ responseServantErr err
      routingRespond (FailFatal err) = respond $ responseServantErr err
      routingRespond (Route v) = respond v
-     --routingRespond :: MonadSnap m => Either RouteMismatch Response -> m Response
-     -- routingRespond (Left NotFound) =
-     --   respond $ responseLBS notFound404 [] "not found"
-     -- routingRespond (Left WrongMethod) =
-     --   respond $ responseLBS methodNotAllowed405 [] "method not allowed"
-     -- routingRespond (Left (InvalidBody err)) =
-     --   respond $ responseLBS badRequest400 [] $ fromString $ "invalid request body: " ++ err
-     -- routingRespond (Left UnsupportedMediaType) =
-     --   respond $ responseLBS unsupportedMediaType415 [] "unsupported media type"
-     -- routingRespond (Left (HttpError status body)) =
-     --   respond $ responseLBS status [] $ fromMaybe (BL.fromStrict $ statusMessage status) body
-     -- routingRespond (Right response) =
-     --   respond response
-
 
 responseLBS :: Status -> [(CI B.ByteString, B.ByteString)] -> BL.ByteString -> Response
 responseLBS (Status code msg) hs body =
@@ -138,18 +86,6 @@ runAction action env req respond k = do
     go (Route a) = do
       e <- a
       return $ k e
-  -- r <- action
-  -- go r
-  -- where
-  --   go (RR (Right a))  = do
-  --     e <- a
-  --     respond $ k e
-  --     -- e <- runEitherT a
-  --     -- respond $ case e of
-  --     --   Right x  -> k x
-  --     --   Left err -> succeedWith $ responseServantErr err
-  --   go (RR (Left err)) = respond $ failWith err
-
 
 
 data Delayed m env c where
@@ -189,9 +125,6 @@ instance Monad m => Monad (DelayedM m) where
 instance MonadIO m => MonadIO (DelayedM m) where
   liftIO m = DelayedM (const . liftIO $ Route <$> m)
 
-instance MonadBase b m  => MonadBase b (DelayedM m) where
-  liftBase = liftBaseDefault
-
 instance Monad m => Alternative (DelayedM m) where
   empty   = DelayedM $ \_ -> return (Fail err404)
   a <|> b = DelayedM $ \req -> do
@@ -200,32 +133,12 @@ instance Monad m => Alternative (DelayedM m) where
       Route a' -> return $ Route a'
       _ -> runDelayedM b req
 
-instance Monad m => MonadPlus (DelayedM m) where
-  mzero = empty
-  mplus = (<|>)
-
-{-
-instance MonadTransControl (DelayedM) where
-  type StT DelayedM a = StT (RouteResult) a
-  liftWith = defaultLiftWith DelayedM runDelayedM
-
-instance MonadIO m => MonadBaseControl IO (DelayedM m) where
-  type StM  (DelayedM m) a = ComposeSt (DelayedM) IO a
-  liftBaseWith = defaultLiftBaseWith
-  restoreM = defaultRestoreM
--}
-  
-
-
---  Could not deduce (MonadBaseControl IO (DelayedM m))
 
 instance MonadTrans DelayedM where
   lift f = DelayedM $ \_ -> do
     a <- f
     return $ Route a
 
--- instance MonadSnap m => MonadSnap (DelayedM m) where
---   liftSnap m = DelayedM (const . liftSnap $ Route <$> m)
 
 -- | A 'Delayed' without any stored checks.
 emptyDelayed :: Monad m => Proxy (m :: * -> *) -> RouteResult a -> Delayed m env a
@@ -342,25 +255,3 @@ runDelayed Delayed{..} env = runDelayedM $ do
   a <- authD
   b <- bodyD
   DelayedM (\ req -> return $ serverD c a b req)
-
-
--- feedTo :: MonadSnap m => m (RouteResult (a -> b)) -> a -> m (RouteResult b)
--- feedTo f x = (($ x) <$>) <$> f
-
--- extractL :: RouteResult (a :<|> b) -> RouteResult a
--- extractL (RR (Right (a :<|> _))) = RR (Right a)
--- extractL (RR (Left err))         = RR (Left err)
-
--- extractR :: RouteResult (a :<|> b) -> RouteResult b
--- extractR (RR (Right (_ :<|> b))) = RR (Right b)
--- extractR (RR (Left err))         = RR (Left err)
-
--- failWith :: RouteMismatch -> RouteResult a
--- failWith = RR . Left
-
--- succeedWith :: a -> RouteResult a
--- succeedWith = RR . Right
-
--- isMismatch :: RouteResult a -> Bool
--- isMismatch (RR (Left _)) = True
--- isMismatch _             = False
