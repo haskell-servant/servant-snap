@@ -116,6 +116,7 @@ test-suite spec
     , hspec-snap >= 1.0 && < 1.1
     , hspec-core == 2.2.3
     , http-types
+    , HUnit
     , digestive-functors == 0.8.1.0
     , mtl
     , network >= 2.6
@@ -127,5 +128,6 @@ test-suite spec
     , snap-core
     , snap-server
     , string-conversions
+    , temporary
     , text
     , transformers

@@ -14,18 +14,19 @@ module Servant.ServerSpec where
 
 
 import           Control.Monad              (forM_, unless, when)
-import           Control.Monad.IO.Class
-import           Data.Aeson                 (FromJSON, ToJSON, decode', encode)
+import           Control.Monad.IO.Class     (liftIO)
+import           Data.Aeson                 (FromJSON, ToJSON)
 import qualified Data.Aeson                 as A
 import qualified Data.ByteString.Char8      as B8
 import qualified Data.ByteString.Lazy       as BL
 import qualified Data.ByteString.Base64     as Base64
-import           Data.CaseInsensitive       (original)
+import           Data.CaseInsensitive       (CI, mk, original)
 import           Data.Char                  (toUpper)
 import qualified Data.Map                   as Map
 import           Data.Maybe                 (fromJust)
 import           Data.Monoid                ((<>))
 import           Data.Proxy                 (Proxy (Proxy))
+import qualified Data.Set                   as Set
 import           Data.String.Conversions    (cs)
 import qualified Data.Text                  as T
 import qualified Data.Text.Lazy             as TL
@@ -37,12 +38,14 @@ import qualified Network.HTTP.Types
 import           Snap.Core                  hiding (Headers, addHeader)
 import qualified Snap.Core                  as SC
 import           Snap.Snaplet
+import qualified Snap.Snaplet.Test          as SST
 import qualified Snap.Test                  as ST
 
 import           Test.Hspec
 import           Test.Hspec.Core.Spec (Result(..))
 import           Test.Hspec.Snap            hiding (NotFound)
 import qualified Test.Hspec.Snap            as THS
+import qualified Test.HUnit                 as HU
 import           Servant.API                ((:<|>) (..), (:>),
                                              addHeader, BasicAuth(..), Capture, CaptureAll,
                                              Header (..), Headers, IsSecure(..),
@@ -66,7 +69,11 @@ data App = App
 type AppHandler = Handler App App
 
 app :: SnapletInit App App
-app = makeSnaplet "servantsnap" "A test app for servant-snap" Nothing $ do
+app = app'  []
+
+app' :: [(B8.ByteString, AppHandler ())] -> SnapletInit App App
+app' rs = makeSnaplet "servantsnap" "A test app for servant-snap" Nothing $ do
+  addRoutes rs
   return App
 
 routes :: HasServer api
@@ -125,6 +132,23 @@ bodyIs (Html _ t) target = t == TL.toStrict target
 bodyIs (Json _ b) target = b == TL.encodeUtf8 target
 bodyIs _ _ = False
 
+-- shouldDecodeTo :: (FromJSON a, Eq a) => TestResponse -> a -> Bool
+shouldDecodeTo' (Json _ bs) t = case A.decode' bs of
+  Just x | x == t -> setResult Success
+  Just x | x /= t -> setResult $ Fail Nothing ("Expected to decode to " ++ show t ++ " but decoded to " ++ show x)
+  Nothing -> setResult $ Fail Nothing "Failed to decode"
+shouldDecodeTo' r _ = setResult $ Fail Nothing ("Expected JSON, got " ++ show r)
+
+shouldDecodeTo :: (FromJSON a, Eq a, Show a) => Either T.Text Response -> a -> IO ()
+shouldDecodeTo (Left e) _ =  HU.assertFailure "No response"
+shouldDecodeTo (Right resp) a = do
+  bod <- ST.getResponseBody resp
+  case A.decode' $ BL.fromStrict bod of
+    Just x | x == a -> return ()
+    Just _ -> HU.assertFailure $ "Failed to decode response to " ++ show a
+    Nothing -> HU.assertFailure $ "Failed to decode respone"
+    
+
 mkRequest :: Method -> B8.ByteString -> [Network.HTTP.Types.Header] -> B8.ByteString -> ST.RequestBuilder IO ()
 mkRequest mth pth hds bdy = do
   ST.postRaw pth "" bdy
@@ -146,16 +170,14 @@ verbSpec = do
       patch214   = Proxy :: Proxy (VerbApi 'V.PATCH 214)
       wrongMethod m  = if m == SC.PUT then SC.POST else SC.PUT
       test desc api verbRoutes (method :: SC.Method) (status :: Int) = do
-        snap (route verbRoutes) app $ do
-         describe "Servant.API.Verb" $ do
-
+        snap (route verbRoutes) app $ describe ("Servant.API.Verb " ++ show method) $ do
 
           -- HEAD and 214/215 need not return bodies
-          unless (status `elem` [214, 215] || method == SC.HEAD) $
-            it "returns the person" $ do
-              response <- runRequest (mkRequest method "/" [] "")
-              liftIO $ statusIs response status `shouldBe` True
-              liftIO $ decodesTo response alice `shouldBe` True
+          -- unless (status `elem` [214, 215] || method == SC.HEAD) $
+          --   it "returns the person" $ do
+          --     response <- runRequest (mkRequest method "/" [] "")
+          --     liftIO $ statusIs response status `shouldBe` True
+          --     response `shouldDecodeTo` alice -- decodesTo response alice `shouldBe` True
 
           it "returns no content on NoContent" $ do
               response <- runRequest (mkRequest method "/noContent" [] "")
@@ -206,6 +228,25 @@ verbSpec = do
           --   liftIO $ simpleHeaders response `shouldContain`
           --     [("Content-Type", "application/json")]
 
+        let sInit = app' verbRoutes
+            runUrl p = SST.runHandler Nothing (mkRequest method p [] "") (serveSnap api server) sInit
+        describe "Servant.API.Verb Headers" $ do
+
+          -- HEAD and 214/215 need not return bodies
+          unless (status `elem` [214, 215] || method == SC.HEAD) $
+            it "returns the person" $ do
+               resp <- runUrl "/" 
+               resp `shouldDecodeTo` alice
+               let (Right r') = resp in SC.rspStatus r' `shouldBe` status
+
+          it "returs headers" $ do
+            resp <- SST.runHandler Nothing (mkRequest method "/header" [] "") (serveSnap api server) sInit
+            shouldHaveHeaders resp  [("H","5")]
+
+          it "sets the content-type header" $ do
+            resp <- SST.runHandler Nothing (mkRequest method "" [] "") (serveSnap api server) sInit
+            resp `shouldHaveHeaders` [("Content-Type", "application/json")]
+
   -- test descr API routes method status
   test "GET 200" get200 (routes get200 server) SC.GET 200
   test "POST 210" post210 (routes post210 server) SC.POST 210
@@ -215,6 +256,19 @@ verbSpec = do
   test "GET 200 with HEAD" get200 (routes get200 server) SC.HEAD 200
 
 -- }}}
+
+shouldHaveHeaders :: Either T.Text Response -> [(B8.ByteString, B8.ByteString)] -> Expectation
+shouldHaveHeaders (Left e) hs = expectationFailure $ T.unpack e
+shouldHaveHeaders (Right resp) hs = do
+  let respHs  = Set.fromList $ SC.listHeaders resp :: Set.Set (CI B8.ByteString, B8.ByteString)
+      hs'     = Set.fromList $  (\(k,v) -> (mk k,v)) <$> hs  :: Set.Set (CI B8.ByteString, B8.ByteString)
+      missing = Set.toList $ Set.difference hs' respHs  :: [(CI B8.ByteString, B8.ByteString)]
+  case missing of
+    [] -> return ()
+    _  -> expectationFailure $
+     "These expected headers and values were missing: " ++ show missing ++
+     " from the response's: " ++ show (Set.toList respHs)
+
 ------------------------------------------------------------------------------
 -- * captureSpec {{{
 ------------------------------------------------------------------------------
