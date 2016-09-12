@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE KindSignatures       #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
@@ -76,6 +77,10 @@ app' rs = makeSnaplet "servantsnap" "A test app for servant-snap" Nothing $ do
   addRoutes rs
   return App
 
+mkInitAndServer :: HasServer api => Proxy (api :: *) -> Server api AppHandler -> (SnapletInit App App, AppHandler ())
+mkInitAndServer api serv = let sRoute = serveSnap api serv
+                           in  (app' [("", sRoute)], sRoute)
+
 routes :: HasServer api
        => Proxy (api :: *)
        -> Server api AppHandler
@@ -139,6 +144,18 @@ shouldDecodeTo' (Json _ bs) t = case A.decode' bs of
   Nothing -> setResult $ Fail Nothing "Failed to decode"
 shouldDecodeTo' r _ = setResult $ Fail Nothing ("Expected JSON, got " ++ show r)
 
+shouldHaveBody :: Either T.Text Response -> T.Text -> IO ()
+shouldHaveBody (Left e) _ = HU.assertFailure $ "Failed to respond"
+shouldHaveBody (Right r) a = do
+  bod <- ST.getResponseBody r
+  bod `shouldBe` T.encodeUtf8 a
+
+shouldHaveStatus :: Either T.Text Response -> Int -> IO ()
+shouldHaveStatus (Left e) _ = HU.assertFailure $ "Failed to respond"
+shouldHaveStatus (Right r) a = do
+  SC.rspStatus r `shouldBe` a
+
+
 shouldDecodeTo :: (FromJSON a, Eq a, Show a) => Either T.Text Response -> a -> IO ()
 shouldDecodeTo (Left e) _ =  HU.assertFailure "No response"
 shouldDecodeTo (Right resp) a = do
@@ -148,6 +165,17 @@ shouldDecodeTo (Right resp) a = do
     Just _ -> HU.assertFailure $ "Failed to decode response to " ++ show a
     Nothing -> HU.assertFailure $ "Failed to decode respone"
     
+shouldHaveHeaders :: Either T.Text Response -> [(B8.ByteString, B8.ByteString)] -> Expectation
+shouldHaveHeaders (Left e) hs = expectationFailure $ T.unpack e
+shouldHaveHeaders (Right resp) hs = do
+  let respHs  = Set.fromList $ SC.listHeaders resp :: Set.Set (CI B8.ByteString, B8.ByteString)
+      hs'     = Set.fromList $  (\(k,v) -> (mk k,v)) <$> hs  :: Set.Set (CI B8.ByteString, B8.ByteString)
+      missing = Set.toList $ Set.difference hs' respHs  :: [(CI B8.ByteString, B8.ByteString)]
+  case missing of
+    [] -> return ()
+    _  -> expectationFailure $
+     "These expected headers and values were missing: " ++ show missing ++
+     " from the response's: " ++ show (Set.toList respHs)
 
 mkRequest :: Method -> B8.ByteString -> [Network.HTTP.Types.Header] -> B8.ByteString -> ST.RequestBuilder IO ()
 mkRequest mth pth hds bdy = do
@@ -169,20 +197,11 @@ verbSpec = do
       delete280  = Proxy :: Proxy (VerbApi 'V.DELETE 280)
       patch214   = Proxy :: Proxy (VerbApi 'V.PATCH 214)
       wrongMethod m  = if m == SC.PUT then SC.POST else SC.PUT
-      test desc api verbRoutes (method :: SC.Method) (status :: Int) = do
-        snap (route verbRoutes) app $ describe ("Servant.API.Verb " ++ show method) $ do
+      test desc api verbRoutes (method :: SC.Method) (status :: Int) =
+       describe ("Servant.API.Verb " ++ show method) $ do
 
-          -- HEAD and 214/215 need not return bodies
-          -- unless (status `elem` [214, 215] || method == SC.HEAD) $
-          --   it "returns the person" $ do
-          --     response <- runRequest (mkRequest method "/" [] "")
-          --     liftIO $ statusIs response status `shouldBe` True
-          --     response `shouldDecodeTo` alice -- decodesTo response alice `shouldBe` True
-
-          it "returns no content on NoContent" $ do
-              response <- runRequest (mkRequest method "/noContent" [] "")
-              liftIO $ statusIs response status `shouldBe` True
-              liftIO $ bodyIs response "" `shouldBe` True
+        -- This group is run with hspec-snap
+        snap (route verbRoutes) app $ do
 
           -- HEAD should not return body
           when (method == SC.HEAD) $
@@ -193,16 +212,6 @@ verbSpec = do
           it "throws 405 on wrong method " $ do
             response <- runRequest $ mkRequest (wrongMethod method) "/" [] ""
             liftIO $ statusIs response 405 `shouldBe` True
-
-          -- -- TODO: get hspec-snap to return headers
-          -- it "returns headers" $ do
-          --   response1 <- runRequest $ mkRequest method "/header" [] ""
-          --   liftIO $ isStatus response1 status `shouldBe` True
-          --   liftIO $ simpleHeaders response1 `shouldContain` [("H", "5")]
-
-          --   response2 <- handler "/header" [] ""
-          --   liftIO $ statusCode (simpleStatus response2) `shouldBe` status
-          --   liftIO $ simpleHeaders response2 `shouldContain` [("H", "5")]
 
           it "handles trailing '/' gracefully" $ do
             response <- runRequest $ mkRequest method "/headerNC/" [] ""
@@ -217,37 +226,37 @@ verbSpec = do
                [(hAccept, "application/json")] ""
             liftIO $ statusIs response status `shouldBe` True
 
-          unless (status `elem` [214, 215] || method == SC.HEAD) $
-            it "allows modular specification of supported content types" $ do
-              response <- runRequest $ mkRequest method "/accept" [(hAccept, "text/plain")] ""
-              liftIO $ statusIs response status `shouldBe` True
-              liftIO $ bodyIs response "B" `shouldBe` True
-
-          -- it "sets the Content-Type header" $ do
-          --   response <- runRequest $ mkRequest method  "" [] ""
-          --   liftIO $ simpleHeaders response `shouldContain`
-          --     [("Content-Type", "application/json")]
-
         let sInit = app' verbRoutes
             runUrl p = SST.runHandler Nothing (mkRequest method p [] "") (serveSnap api server) sInit
-        describe "Servant.API.Verb Headers" $ do
+
+        -- This group is run with hspec directly
 
           -- HEAD and 214/215 need not return bodies
-          unless (status `elem` [214, 215] || method == SC.HEAD) $
-            it "returns the person" $ do
-               resp <- runUrl "/" 
-               resp `shouldDecodeTo` alice
-               let (Right r') = resp in SC.rspStatus r' `shouldBe` status
+        unless (status `elem` [214, 215] || method == SC.HEAD) $
+          it "returns the person" $ do
+             resp <- runUrl "/" 
+             resp `shouldDecodeTo` alice
+             resp `shouldHaveStatus` status
 
-          it "returs headers" $ do
-            resp <- SST.runHandler Nothing (mkRequest method "/header" [] "") (serveSnap api server) sInit
-            shouldHaveHeaders resp  [("H","5")]
+        it "returns no content on NoContent" $ do
+          resp <- runUrl "/noContent"
+          resp `shouldHaveStatus` status
+          resp `shouldHaveBody` ""
 
-          it "sets the content-type header" $ do
-            resp <- SST.runHandler Nothing (mkRequest method "" [] "") (serveSnap api server) sInit
-            resp `shouldHaveHeaders` [("Content-Type", "application/json")]
+        it "returs headers" $ do
+          resp <- SST.runHandler Nothing (mkRequest method "/header" [] "") (serveSnap api server) sInit
+          shouldHaveHeaders resp  [("H","5")]
 
-  -- test descr API routes method status
+        it "sets the content-type header" $ do
+          resp <- SST.runHandler Nothing (mkRequest method "" [] "") (serveSnap api server) sInit
+          resp `shouldHaveHeaders` [("Content-Type", "application/json")]
+
+        unless (status `elem` [214, 215] || method == SC.HEAD) $
+          it "allows modular specification of supported content types" $ do
+            resp <- SST.runHandler Nothing (mkRequest method "/accept" [(hAccept, "text/plain")] "") (serveSnap api server) sInit
+            resp `shouldHaveStatus` status
+            resp `shouldHaveBody` "B"
+
   test "GET 200" get200 (routes get200 server) SC.GET 200
   test "POST 210" post210 (routes post210 server) SC.POST 210
   test "PUT 203" put203 (routes put203 server) SC.PUT 203
@@ -256,18 +265,6 @@ verbSpec = do
   test "GET 200 with HEAD" get200 (routes get200 server) SC.HEAD 200
 
 -- }}}
-
-shouldHaveHeaders :: Either T.Text Response -> [(B8.ByteString, B8.ByteString)] -> Expectation
-shouldHaveHeaders (Left e) hs = expectationFailure $ T.unpack e
-shouldHaveHeaders (Right resp) hs = do
-  let respHs  = Set.fromList $ SC.listHeaders resp :: Set.Set (CI B8.ByteString, B8.ByteString)
-      hs'     = Set.fromList $  (\(k,v) -> (mk k,v)) <$> hs  :: Set.Set (CI B8.ByteString, B8.ByteString)
-      missing = Set.toList $ Set.difference hs' respHs  :: [(CI B8.ByteString, B8.ByteString)]
-  case missing of
-    [] -> return ()
-    _  -> expectationFailure $
-     "These expected headers and values were missing: " ++ show missing ++
-     " from the response's: " ++ show (Set.toList respHs)
 
 ------------------------------------------------------------------------------
 -- * captureSpec {{{
@@ -282,36 +279,35 @@ captureServer legs = case legs of
   2 -> return tweety
   _ -> throwError err404
 
-type CaptureApi2 = CaptureApi :<|> Raw
+type CaptureApi2 = Capture "captured" String :> Raw
 
 captureApi2 :: Proxy CaptureApi2
 captureApi2 = Proxy
 
 captureServer2 :: Server CaptureApi2 AppHandler
-captureServer2 = captureServer :<|> (do
+captureServer2 _ = do
   rq <- getRequest
-  writeBS (SC.rqPathInfo rq))
+  writeBS (SC.rqPathInfo rq) 
 
 captureSpec :: Spec
-captureSpec = snap (route (routes captureApi captureServer)) app $  do
+captureSpec = do -- snap (route (routes captureApi captureServer)) app $  
+  let (sInit :: SnapletInit App App, handler :: AppHandler () ) = mkInitAndServer captureApi captureServer
+      (sInit2, handler2 :: AppHandler () ) = mkInitAndServer captureApi2 captureServer2
+      runReq r method api serv i = SST.runHandler Nothing (mkRequest method r [] "") (serveSnap api serv) i
   describe "Servant.API.Capture" $ do
 
       it "can capture parts of the 'pathInfo'" $ do
-        response <- get "/2"
-        liftIO $ decodesTo response tweety `shouldBe` True
+        response <- runReq "/2" SC.GET captureApi captureServer sInit
+        response `shouldDecodeTo` tweety
+        -- liftIO $ decodesTo response tweety `shouldBe` True
 
       it "returns 400 if the decoding fails" $ do
-        response <- get "/notAnInt"
-        liftIO $ statusIs response 404 `shouldBe` True
+        response <- runReq "/notAnInt" SC.GET captureApi captureServer sInit -- get "/notAnInt"
+        response `shouldHaveStatus` 400
 
-{- TODO
-    with (return (serve
-        (Proxy :: Proxy (Capture "captured" String :> Raw))
-        (\ "captured" request_ respond ->
-            respond $ responseLBS ok200 [] (cs $ show $ pathInfo request_)))) $ do
       it "strips the captured path snippet from pathInfo" $ do
-        get "/captured/foo" `shouldRespondWith` (fromString (show ["foo" :: String]))
--}
+        response <- runReq "/captured/foo" SC.GET captureApi2 captureServer2 sInit2
+        response `shouldHaveBody` "foo"
 
 -- }}}
 ------------------------------------------------------------------------------
