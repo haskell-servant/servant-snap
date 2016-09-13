@@ -23,6 +23,7 @@ import           Control.Applicative         ((<$>))
 import           Control.Monad               (liftM)
 import           Control.Monad.IO.Class      (liftIO)
 import           Control.Monad.Trans.Class   (lift)
+import           Data.Bool                   (bool)
 import qualified Data.ByteString.Char8       as B
 import qualified Data.ByteString.Lazy        as BL
 import           Data.CaseInsensitive        (mk)
@@ -43,9 +44,9 @@ import           Snap.Core                   hiding (Headers, Method,
                                               getResponse, headers, route,
                                               method, withRequest)
 import           Servant.API                 ((:<|>) (..), (:>), Capture, CaptureAll,
-                                               Header,
+                                               Header, IsSecure(..),
                                                QueryFlag, QueryParam,
-                                              QueryParams, Raw, ReqBody, ReflectMethod(..), Verb)
+                                              QueryParams, Raw, RemoteHost, ReqBody, ReflectMethod(..), Verb)
 import           Servant.API.ContentTypes    (AcceptHeader (..),
                                               AllCTRender (..),
                                               AllCTUnrender (..), AllMime(..), canHandleAcceptH)
@@ -594,6 +595,25 @@ instance (KnownSymbol path, HasServer sublayout) => HasServer (path :> sublayout
                 (route (Proxy :: Proxy sublayout) subserver)
     where proxyPath = Proxy :: Proxy path
 -}
+
+instance HasServer api => HasServer (HttpVersion :> api) where
+  type ServerT (HttpVersion :> api) m = HttpVersion -> ServerT api m
+
+  route Proxy subserver =
+    route (Proxy :: Proxy api) (passToServer subserver rqVersion)
+
+
+instance HasServer api => HasServer (IsSecure :> api) where
+  type ServerT (IsSecure :> api) m = IsSecure -> ServerT api m
+
+  route Proxy subserver =
+    route (Proxy :: Proxy api) (passToServer subserver (bool NotSecure Secure . rqIsSecure))
+
+instance HasServer api => HasServer (RemoteHost :> api) where
+  type ServerT (RemoteHost :> api) m = B.ByteString -> ServerT api m
+
+  route Proxy subserver =
+    route (Proxy :: Proxy api) (passToServer subserver rqHostName)
 
 ct_wildcard :: B.ByteString
 ct_wildcard = "*" <> "/" <> "*" -- Because CPP
