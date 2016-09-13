@@ -14,7 +14,6 @@ import           Data.Proxy
 import           Data.Text
 import           GHC.Generics
 import qualified Heist.Interpreted as I
-import           Servant.Server.Internal.SnapShims
 import           Snap.Core
 import           Snap.Snaplet
 import           Snap.Snaplet.Auth

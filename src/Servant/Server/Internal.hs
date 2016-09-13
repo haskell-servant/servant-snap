@@ -8,7 +8,6 @@
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeOperators        #-}
-{-# LANGUAGE OverlappingInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 module Servant.Server.Internal
@@ -19,34 +18,37 @@ module Servant.Server.Internal
   , module Servant.Server.Internal.ServantErr
   ) where
 
+-------------------------------------------------------------------------------
 import           Control.Applicative         ((<$>))
-import           Control.Monad               (liftM)
-import           Control.Monad.IO.Class      (liftIO)
 import           Control.Monad.Trans.Class   (lift)
 import           Data.Bool                   (bool)
 import qualified Data.ByteString.Char8       as B
 import qualified Data.ByteString.Lazy        as BL
-import           Data.CaseInsensitive        (mk)
-import qualified Data.Map                    as M
 import           Data.Maybe                  (fromMaybe, mapMaybe)
 import           Data.Proxy
 import           Data.String                 (fromString)
 import           Data.String.Conversions     (cs, (<>))
 import           Data.Text                   (Text)
-import           Data.Text.Encoding          (decodeUtf8)
-import           GHC.TypeLits                (KnownNat, KnownSymbol, natVal, symbolVal)
-import           Network.HTTP.Types          (HeaderName(..), Method, Status(..), parseQueryText, methodGet, methodHead, hContentType, hAccept)
-import           Web.HttpApiData             (FromHttpApiData, parseUrlPieceMaybe)
+import           GHC.TypeLits                (KnownNat, KnownSymbol, natVal,
+                                              symbolVal)
+import           Network.HTTP.Types          (HeaderName, Method,
+                                              Status(..), parseQueryText,
+                                              methodGet, methodHead,
+                                              hContentType, hAccept)
+import           Web.HttpApiData             (FromHttpApiData)
 import           Web.HttpApiData.Internal    (parseHeaderMaybe,
                                               parseQueryParamMaybe,
-                                              parseUrlPieceMaybe, parseUrlPieces)
+                                              parseUrlPieceMaybe,
+                                              parseUrlPieces)
 import           Snap.Core                   hiding (Headers, Method,
                                               getResponse, headers, route,
                                               method, withRequest)
-import           Servant.API                 ((:<|>) (..), (:>), Capture, CaptureAll,
-                                               Header, IsSecure(..),
-                                               QueryFlag, QueryParam,
-                                              QueryParams, Raw, RemoteHost, ReqBody, ReflectMethod(..), Verb)
+import           Servant.API                 ((:<|>) (..), (:>), Capture,
+                                              CaptureAll, Header,
+                                              IsSecure(..), QueryFlag,
+                                              QueryParam, QueryParams, Raw,
+                                              RemoteHost, ReqBody,
+                                              ReflectMethod(..), Verb)
 import           Servant.API.ContentTypes    (AcceptHeader (..),
                                               AllCTRender (..),
                                               AllCTUnrender (..), AllMime(..), canHandleAcceptH)
@@ -125,14 +127,9 @@ instance (FromHttpApiData a, HasServer sublayout)
                                    Nothing -> delayedFail err400
                                    Just v  -> return v
         )
-    -- DynamicRouter $ \ first ->
-    --   route (Proxy :: Proxy sublayout)
-    --         (case captured captureProxy first of
-    --            Nothing  -> return $ failWith NotFound
-    --            Just v   -> feedTo subserver v)
-    -- where captureProxy = Proxy :: Proxy (Capture capture a)
 
-instance (KnownSymbol capture, FromHttpApiData a, HasServer sublayout)
+
+instance (FromHttpApiData a, HasServer sublayout)
       => HasServer (CaptureAll capture a :> sublayout) where
 
   type ServerT (CaptureAll capture a :> sublayout) m =
@@ -148,10 +145,12 @@ instance (KnownSymbol capture, FromHttpApiData a, HasServer sublayout)
 
 
 allowedMethodHead :: Method -> Request -> Bool
-allowedMethodHead method request = method == methodGet && unSnapMethod (rqMethod request) == methodHead
+allowedMethodHead method request =
+  method == methodGet && unSnapMethod (rqMethod request) == methodHead
 
 allowedMethod :: Method -> Request -> Bool
-allowedMethod method request = allowedMethodHead method request || unSnapMethod (rqMethod request) == method
+allowedMethod method request =
+  allowedMethodHead method request || unSnapMethod (rqMethod request) == method
 
 processMethodRouter :: Maybe (BL.ByteString, BL.ByteString) -> Status -> Method
                     -> Maybe [(HeaderName, B.ByteString)]
@@ -196,16 +195,6 @@ methodRouter method proxy status action = leafRouter route'
                let handleA = handleAcceptH proxy (AcceptHeader accH) output
                processMethodRouter handleA status method Nothing request
 
-      -- | pathIsEmpty request && unSnapMethod (rqMethod request) == method = do
-      --     runAction action respond $ \ output -> do
-      --       let accH = fromMaybe ct_wildcard $ getHeader (mk "Accept") request
-      --       case handleAcceptH proxy (AcceptHeader accH) output of
-      --         Nothing -> failWith UnsupportedMediaType
-      --         Just (contentT, body) -> succeedWith $
-      --           responseLBS status [ ("Content-Type" , cs contentT)] body
-      -- | pathIsEmpty request && unSnapMethod (rqMethod request) /= method =
-      --     respond $ failWith WrongMethod
-      -- | otherwise = respond $ failWith NotFound
 
 methodRouterHeaders :: (GetHeaders (Headers h v), AllCTRender ctypes v, MonadSnap m)
                     => Method -> Proxy ctypes -> Status
@@ -221,33 +210,6 @@ methodRouterHeaders method proxy status action = leafRouter route'
                 let headers = getHeaders output
                     handleA = handleAcceptH proxy (AcceptHeader accH) (getResponse output)
                 processMethodRouter handleA status method (Just headers) request
--- LeafRouter route'
---   where
---     route' request respond
---       | pathIsEmpty request && unSnapMethod (rqMethod request) == method = do
---         runAction action respond $ \ output -> do
---           let accH = fromMaybe ct_wildcard $ getHeader (mk "Accept") request
---               headers = getHeaders output
---           case handleAcceptH proxy (AcceptHeader accH) (getResponse output) of
---             Nothing -> failWith UnsupportedMediaType
---             Just (contentT, body) -> succeedWith $
---               responseLBS status ( ("Content-Type" , cs contentT) : headers) body
---       | pathIsEmpty request && unSnapMethod (rqMethod request) /= method =
---           respond $ failWith WrongMethod
---       | otherwise = respond $ failWith NotFound
-
--- methodRouterEmpty :: MonadSnap m => Method
---                   -> Delayed m env (m ()) -- m (RouteResult (m ()))
---                   -> Router m env -- Request (RoutingApplication m) m
--- methodRouterEmpty method action = LeafRouter route'
---   where
---     route' request respond
---       | pathIsEmpty request && unSnapMethod (rqMethod request) == method = do
---           runAction action respond $ \ () ->
---             succeedWith $ responseLBS noContent204 [] ""
---       | pathIsEmpty request && unSnapMethod (rqMethod request) /= method =
---           respond $ failWith WrongMethod
---       | otherwise = respond $ failWith NotFound
 
 
 instance {-# OVERLAPPABLE #-} (AllCTRender ctypes a,
@@ -303,13 +265,6 @@ instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout)
     in  route (Proxy :: Proxy sublayout) (passToServer subserver mheader)
     where str = fromString $ symbolVal (Proxy :: Proxy sym)
 
---   route Proxy subserver = WithRequest $ \ request ->
---     let mheader = parseHeaderMaybe =<< getHeader str request
---     -- let mheader = parseHeaderMaybe =<< lookup str (requestHeaders request)
---     in  route (Proxy :: Proxy sublayout) (feedTo subserver mheader)
---     where str = fromString $ symbolVal (Proxy :: Proxy sym)
-
-
 
 -- | If you use @'QueryParam' "author" Text@ in one of the endpoints for your API,
 -- this automatically requires your server-side handler to be a function
@@ -349,17 +304,6 @@ instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout)
     in route (Proxy :: Proxy sublayout) (passToServer subserver param)
     where paramname = cs $ symbolVal (Proxy :: Proxy sym)
 
-{-
-  route Proxy subserver = WithRequest $ \ request ->
-    let p =
-          case rqQueryParam paramname request of
-            Nothing       -> Nothing -- param absent from the query string
-            Just []       -> Nothing -- param present with no value -> Nothing
-            Just (v:_) -> parseQueryParamMaybe (decodeUtf8 v)-- if present, we try to convert to
-                                        -- the right type
-    in route (Proxy :: Proxy sublayout) (feedTo subserver p)
-    where paramname = cs $ symbolVal (Proxy :: Proxy sym)
--}
 
 -- | If you use @'QueryParams' "authors" Text@ in one of the endpoints for your API,
 -- this automatically requires your server-side handler to be a function
@@ -400,25 +344,6 @@ instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout)
           convert (Just v) = parseQueryParamMaybe v
 
 
-{-
-  route Proxy subserver = WithRequest $ \ request ->
-    route (Proxy :: Proxy sublayout) (feedTo subserver (values request))
-    where
-      paramName    = cs $ symbolVal (Proxy :: Proxy sym)
-      looksLikeParam (name,_) = name == paramName || name == ("paramName" <> "[]")
-      convert Nothing = Nothing
-      convert (Just v) = parseQueryParamMaybe v
-
-      querytext r = parseQueryText $ rqQueryString r
-      parameters r = filter looksLikeParam (querytext r)
-      values r = mapMaybe (convert . snd) (parameters r)
-
-      -- paramsBare r = mconcat $ rqQueryParam paramName r
-      -- paramsBrak r = concat $ rqQueryParam (paramName <> "[]") r
-      -- values     r = mapMaybe (parseQueryParamMaybe . decodeUtf8) $ paramsBare r <> paramsBrak r
--}
-
-
 -- | If you use @'QueryFlag' "published"@ in one of the endpoints for your API,
 -- this automatically requires your server-side handler to be a function
 -- that takes an argument of type 'Bool'.
@@ -448,17 +373,6 @@ instance (KnownSymbol sym, HasServer sublayout)
           examine v | v == "true" || v == "1" || v == "" = True
                     | otherwise = False
 
-{-
-  route Proxy subserver = WithRequest $ \ request ->
-    let p = case rqQueryParam paramname request of
-          Just []       -> True  -- param is there, with no value
-          Just (v:_)    -> examine v -- param with a value
-          Nothing       -> False -- param not in the query string
-    in  route (Proxy :: Proxy sublayout) (feedTo subserver p)
-    where paramname = cs $ symbolVal (Proxy :: Proxy sym)
-          examine v | v == "true" || v == "1" || v == "" = True
-                    | otherwise = False
--}
 
 -- | Just pass the request to the underlying application and serve its response.
 --
@@ -468,14 +382,8 @@ instance (KnownSymbol sym, HasServer sublayout)
 -- >
 -- > server :: Server MyApi
 -- > server = serveDirectory "/var/www/images"
---instance (ToRawApplication a, MonadSnap m) => HasServer (Raw m a) where
---instance ToRawApplication a => HasServer (Raw m a) where
---instance forall m a n.(MonadSnap m, m ~ n) => HasServer (Raw m (n a)) where
 instance HasServer Raw where
---instance ToRawApplication a => HasServer (Raw m a) where
 
-  --type ServerT (Raw n a) m = Raw n (Application m)
-  -- type ServerT Raw m = m ()
   type ServerT Raw m = m ()
 
   route Proxy rawApplication = RawRouter $ \ env request respond -> do
@@ -485,17 +393,6 @@ instance HasServer Raw where
       Fail a      -> respond $ Fail a
       FailFatal e -> respond $ FailFatal e
 
-{-
-  -- route :: Proxy layout -> IO (RouteResult (Server layout)) -> Router
-  route Proxy rawApplication = leafRouter $ \ request respond -> do
-    r <- rawApplication
-    case r of
-      Route app -> app request (respond . Route)
-      Fail a -> respond $ Fail a
-      FailFatal a -> respond $ FailFatal a
-      -- RR (Left err)      -> respond $ failWith err
-      -- RR (Right rawApp) -> (snapToApplication rawApp )request (respond . succeedWith)
--}
 
 -- | If you use 'ReqBody' in one of the endpoints for your API,
 -- this automatically requires your server-side handler to be a function
@@ -530,52 +427,13 @@ instance ( AllCTUnrender list a, HasServer sublayout
       bodyCheck' = do
         req <- lift getRequest
         let contentTypeH = fromMaybe "application/octet-stream" $ getHeader hContentType req
-        mrqbody <- handleCTypeH (Proxy :: Proxy list) (cs contentTypeH) <$> lift (readRequestBody 1000000)
-        case mrqbody of
-          Nothing        -> delayedFailFatal err415
-          Just (Left e)  -> delayedFailFatal err400 { errBody = cs e }
-          Just (Right v) -> return v
-
-{-
-      bodyCheck :: DelayedM m a
-      bodyCheck = withRequest $ \ request -> do
-        -- See HTTP RFC 2616, section 7.2.1
-        -- http://www.w3.org/Protocols/rfc2616/rfc2616-sec7.html#sec7.2.1
-        -- See also "W3C Internet Media Type registration, consistency of use"
-        -- http://www.w3.org/2001/tag/2002/0129-mime
-        let contentTypeH = fromMaybe "application/octet-stream"
-                         $ getHeader hContentType request -- lookup hContentType $ requestHeaders request
-        -- mrqbody <- handleCTypeH (Proxy :: Proxy list) (cs contentTypeH)
-        --         <$> (_ $ readRequestBody 100000) -- liftIO (lazyRequestBody request)
-        -- 1 <- return 1 :: _
         mrqbody <- handleCTypeH (Proxy :: Proxy list) (cs contentTypeH) <$>
-                     liftSnap rrb -- (readRequestBody 1000000 :: m  BL.ByteString)
+                                 lift (readRequestBody maxBound)
         case mrqbody of
           Nothing        -> delayedFailFatal err415
           Just (Left e)  -> delayedFailFatal err400 { errBody = cs e }
           Just (Right v) -> return v
--}
 
-rrb :: Snap BL.ByteString
-rrb = readRequestBody 1000000
-
-{-
-  route Proxy subserver = WithRequest $ \ request ->
-    route (Proxy :: Proxy sublayout) $ do
-      -- See HTTP RFC 2616, section 7.2.1
-      -- http://www.w3.org/Protocols/rfc2616/rfc2616-sec7.html#sec7.2.1
-      -- See also "W3C Internet Media Type registration, consistency of use"
-      -- http://www.w3.org/2001/tag/2002/0129-mime
-      let contentTypeH = fromMaybe "application/octet-stream"
-                       $ getHeader (mk "Content-Type") request
-      rBody <- readRequestBody 10000000
-      mrqbody <- handleCTypeH (Proxy :: Proxy list) (cs contentTypeH)
-                 <$> return rBody -- lazyRequestBody request
-      case mrqbody of
-        Nothing -> return $ failWith $ UnsupportedMediaType
-        Just (Left e) -> return $ failWith $ InvalidBody e
-        Just (Right v) -> feedTo subserver v
--}
 
 -- | Make sure the incoming request starts with @"/path"@, strip it and
 -- pass the rest of the request path to @sublayout@.
@@ -589,12 +447,6 @@ instance (KnownSymbol path, HasServer sublayout) => HasServer (path :> sublayout
       (route (Proxy :: Proxy sublayout) subserver)
     where proxyPath = Proxy :: Proxy path
 
-{-
-  route Proxy subserver = StaticRouter $
-    M.singleton (cs (symbolVal proxyPath))
-                (route (Proxy :: Proxy sublayout) subserver)
-    where proxyPath = Proxy :: Proxy path
--}
 
 instance HasServer api => HasServer (HttpVersion :> api) where
   type ServerT (HttpVersion :> api) m = HttpVersion -> ServerT api m

@@ -17,26 +17,7 @@ module Servant.Server
     HasServer(..)
   , Server
 
-    -- * Enter
-    -- $enterDoc
-
     -- ** Basic functions and datatypes
-  , enter
-  , (:~>)(..)
-    -- ** `Nat` utilities
-  , liftNat
-  , runReaderTNat
-  , evalStateTLNat
-  , evalStateTSNat
-  , logWriterTLNat
-  , logWriterTSNat
-  , fromExceptT
-  -- ** Functions based on <https://hackage.haskell.org/package/mmorph mmorph>
-  , hoistNat
-  , embedNat
-  , squashNat
-  , generalizeNat
-
 
     -- * Default error type
   , ServantErr(..)
@@ -78,9 +59,7 @@ module Servant.Server
   ) where
 
 import           Data.Proxy                        (Proxy(..))
-import qualified Data.Text                         as T
 import           Servant.Server.Internal
-import           Servant.Server.Internal.Enter
 import           Servant.Server.Internal.SnapShims
 import           Snap.Core                         hiding (route)
 
@@ -122,33 +101,3 @@ serveSnap
   -> Server layout m
   -> m ()
 serveSnap p server = applicationToSnap $ serveApplication p server
-
-{-
-layout :: (HasServer api) => Proxy api -> T.Text
-layout p =
-  routerLayout (route p (emptyDelayed (FailFatal err501)))
--}
-
-
--- Documentation
-
--- $enterDoc
--- Sometimes our cherished `EitherT` monad isn't quite the type you'd like for
--- your handlers. Maybe you want to thread some configuration in a @Reader@
--- monad. Or have your types ensure that your handlers don't do any IO. Enter
--- `enter`.
---
--- With `enter`, you can provide a function, wrapped in the `(:~>)` / `Nat`
--- newtype, to convert any number of endpoints from one type constructor to
--- another. For example
---
--- >>> import Control.Monad.Reader
--- >>> import qualified Control.Category as C
--- >>> type ReaderAPI = "ep1" :> Get '[JSON] Int :<|> "ep2" :> Get '[JSON] String
--- >>> let readerServer = return 1797 :<|> ask :: ServerT ReaderAPI (Reader String)
--- >>> let mainServer = enter (generalizeNat C.. (runReaderTNat "hi")) readerServer :: Server ReaderAPI
---
-
--- $setup
--- >>> import Servant.API
--- >>> import Servant.Server

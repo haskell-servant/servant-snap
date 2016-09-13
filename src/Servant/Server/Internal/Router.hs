@@ -33,13 +33,6 @@ pathRouter t r = StaticRouter (M.singleton t r) []
 leafRouter :: (env -> a) -> Router' m env a
 leafRouter l = StaticRouter M.empty [l]
 
-  --     -- ^ first path component used for lookup and removed afterwards
-  -- | DynamicRouter (Text -> Router req app m)
-  --     -- ^ first path component used for lookup and removed afterwards
-  -- | LeafRouter    (RoutingApplication m)
-  --     -- ^ to be used for routes that match an empty path
-  -- | Choice        (Router req app m) (Router req app m)
-  --     -- ^ left-biased choice between two routers
 
 -- | Smart constructor for the choice between routers.
 -- We currently optimize the following cases:
@@ -59,15 +52,6 @@ choice (CaptureRouter router1) (CaptureRouter router2) =
   CaptureRouter (choice router1 router2)
 choice router1 (Choice router2 router3) = Choice (choice router1 router2) router3
 choice router1 router2 = Choice router1 router2
--- choice (DynamicRouter fun1)  (DynamicRouter fun2)  =
---   DynamicRouter (\ first -> choice (fun1 first) (fun2 first))
--- choice (WithRequest router1) (WithRequest router2) =
---   WithRequest (\ request -> choice (router1 request) (router2 request))
--- choice (WithRequest router1) router2 =
---   WithRequest (\ request -> choice (router1 request) router2)
--- choice router1 (WithRequest router2) =
---   WithRequest (\ request -> choice router1 (router2 request))
--- choice router1 router2 = Choice router1 router2
 
 data RouterStructure =
     StaticRouterStructure (Map Text RouterStructure) Int
@@ -127,8 +111,8 @@ routerLayout router =
     mkLeaf False = ["└─•"]
 
     mkSubTree :: Bool -> Text -> [Text] -> [Text]
-    mkSubTree True  path children = ("├─ " <> path <> "/") : map ("│  " <>) children
-    mkSubTree False path children = ("└─ " <> path <> "/") : map ("   " <>) children
+    mkSubTree True  pth children = ("├─ " <> pth <> "/") : map ("│  " <>) children
+    mkSubTree False pth children = ("└─ " <> pth <> "/") : map ("   " <>) children
 
 -- | Apply a transformation to the response of a `Router`.
 tweakResponse :: (RouteResult Response -> RouteResult Response) -> Router m env -> Router m env
@@ -167,27 +151,6 @@ runRouterEnv router env request respond = case router of
   Choice r1 r2 ->
     runChoice [runRouterEnv r1, runRouterEnv r2] env request respond
 
---   runRouter (router request) request respond
--- runRouter (StaticRouter table) request respond =
---   case processedPathInfo request of
---     first : _
---       | Just router <- M.lookup first table
---       -> let request' = reqSafeTail request
---          in  runRouter router request' respond
---     _ -> respond $ failWith NotFound
--- runRouter (DynamicRouter fun)  request respond =
---   case processedPathInfo request of
---     first : _
---       -> let request' = reqSafeTail request
---          in  runRouter (fun first) request' respond
---     _ -> respond $ failWith NotFound
--- runRouter (LeafRouter app)     request respond = app request respond
--- runRouter (Choice r1 r2)       request respond =
---   runRouter r1 request $ \ mResponse1 ->
---     if isMismatch mResponse1
---       then runRouter r2 request $ \ mResponse2 ->
---              respond (mResponse1 <> mResponse2)
---       else respond mResponse1
 
 runChoice :: [env -> RoutingApplication m] -> env -> RoutingApplication m
 runChoice ls =

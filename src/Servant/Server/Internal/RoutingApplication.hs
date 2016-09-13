@@ -16,23 +16,17 @@
 module Servant.Server.Internal.RoutingApplication where
 
 import           Control.Applicative                 (Applicative, Alternative(..), (<$>))
-import           Control.Monad                       (ap, liftM, MonadPlus(..))
-import           Control.Monad.Base
+import           Control.Monad                       (ap, liftM)
 import           Control.Monad.IO.Class              (MonadIO, liftIO)
-import           Control.Monad.Trans.Control
 import           Control.Monad.Trans.Class
 import qualified Data.ByteString                     as B
 import qualified Data.ByteString.Builder             as Builder
 import qualified Data.ByteString.Lazy                as BL
 import           Data.CaseInsensitive                (CI)
 import qualified Data.List                           as L
-import           Data.Maybe                          (fromMaybe)
-import           Data.Monoid                         (Monoid(..), (<>))
 import           Data.Proxy                          (Proxy(..))
-import           Data.String                         (fromString)
 import           Network.HTTP.Types                  (Status(..))
 import qualified System.IO.Streams                   as Streams
-import           Servant.API                         ((:<|>) (..))
 import           Servant.Server.Internal.SnapShims
 import           Servant.Server.Internal.ServantErr
 import           Snap.Core
