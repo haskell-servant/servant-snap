@@ -63,8 +63,8 @@ spec = do
     describe "serveDirectory" $ do
       it "successfully serves files" $ do
         response <- get "/static/foo.txt"
-        liftIO $ response `shouldBe` Html (RespCode 200) "foo"
+        liftIO $ response `shouldBe` Html (RespCode 200) "bar"
 
       it "serves the contents of index.html when requesting the root of a directory" $ do
         response <- get "/static/"
-        liftIO $ response `shouldBe` Html (RespCode 200) "foo"
+        liftIO $ response `shouldBe` Html (RespCode 200) "index"
