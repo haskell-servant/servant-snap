@@ -35,8 +35,8 @@ import           Network.HTTP.Types          (HeaderName, Method,
                                               Status(..), parseQueryText,
                                               methodGet, methodHead,
                                               hContentType, hAccept)
-import           Web.HttpApiData             (FromHttpApiData)
-import           Web.HttpApiData.Internal    (parseHeaderMaybe,
+import           Web.HttpApiData             (FromHttpApiData,
+                                              parseHeaderMaybe,
                                               parseQueryParamMaybe,
                                               parseUrlPieceMaybe,
                                               parseUrlPieces)
