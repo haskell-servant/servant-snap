@@ -809,9 +809,8 @@ mkRequest mth pth qs hds bdy = do
   ST.setQueryStringRaw qs
   unless (mth == SC.POST) $ ST.setRequestType (ST.RequestWithRawBody mth bdy)
   forM_ hds (\(k, v) -> unless (k == hContentType) $ ST.addHeader k v)
-  req <- State.get -- Useful for debugging
-  liftIO $ print req
-  return ()
+  -- req <- State.get -- Useful for debugging
+  -- liftIO $ print req
 
 runReqOnApi :: HasServer api
             => Proxy (api :: *)
