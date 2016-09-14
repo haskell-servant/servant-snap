@@ -17,7 +17,6 @@ module Servant.ServerSpec where
 -------------------------------------------------------------------------------
 import           Control.Monad              (forM_, unless, when)
 import           Control.Monad.IO.Class     (liftIO)
-import qualified Control.Monad.State.Class  as State
 import           Data.Aeson                 (FromJSON, ToJSON)
 import qualified Data.Aeson                 as A
 import qualified Data.ByteString.Char8      as B8
