@@ -428,7 +428,7 @@ instance ( AllCTUnrender list a, HasServer sublayout
         req <- lift getRequest
         let contentTypeH = fromMaybe "application/octet-stream" $ getHeader hContentType req
         mrqbody <- handleCTypeH (Proxy :: Proxy list) (cs contentTypeH) <$>
-                                 lift (readRequestBody maxBound)
+                                 lift (readRequestBody 2147483647) -- Maximum size: 2GB
         case mrqbody of
           Nothing        -> delayedFailFatal err415
           Just (Left e)  -> delayedFailFatal err400 { errBody = cs e }
