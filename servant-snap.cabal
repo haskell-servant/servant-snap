@@ -4,13 +4,13 @@ synopsis:            A family of combinators for defining webservices APIs and s
 description:
   Interpret a Servant API as a Snap server, using any Snaplets you like.
   .
-  You can learn about the basics of servant in the Servant <http://haskell-servant.github.io/tutorial tutorial>, and about the basics of Snap at the Snaplets <http://snapframework.com/docs/tutorials/snaplets-tutorial tutorial>
+  You can learn about the basics of servant in the Servant <https://haskell-servant.readthedocs.io tutorial>, and about the basics of Snap at the Snaplets <http://snapframework.com/docs/tutorials/snaplets-tutorial tutorial>
   .
-  <https://github.com/haskell-servant/servant-snap/blob/master/servant-server/example/greet.hs Here>
+  <https://github.com/haskell-servant/servant-snap/blob/master/example/greet.hs Here>
   is a runnable example, with comments, that defines a dummy API and implements
   a webserver that serves this API, using this package. One route delegates to the <https://hackage.haskell.org/package/snap/docs/Snap-Snaplet-Auth.html Auth> snaplet, another delegates to <https://hackage.haskell.org/package/snap/docs/Snap-Snaplet-Heist.html Heist>.
   .
-  <https://github.com/haskell-servant/servant-snap/blob/master/servant-snap/CHANGELOG.md CHANGELOG>
+  <https://github.com/haskell-servant/servant-snap/blob/master/CHANGELOG.md CHANGELOG>
 homepage:            http://haskell-servant.github.io/
 Bug-reports:         http://github.com/haskell-servant/servant/issues
 license:             BSD3

@@ -10,9 +10,6 @@ module Servant.Server
   ( -- * Run a snap handler from an API
     serveSnap
 
-  , -- * Construct a wai Application from an API
-    toApplication
-
   , -- * Handlers for all standard combinators
     HasServer(..)
   , Server
