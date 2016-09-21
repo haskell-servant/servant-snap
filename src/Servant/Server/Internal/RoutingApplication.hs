@@ -14,7 +14,7 @@
 {-# LANGUAGE UndecidableInstances       #-}
 module Servant.Server.Internal.RoutingApplication where
 
-import           Control.Applicative                 (Applicative, Alternative(..), (<$>))
+import           Control.Applicative                 (Applicative(..), Alternative(..), (<$>))
 import           Control.Monad                       (ap, liftM)
 import           Control.Monad.IO.Class              (MonadIO, liftIO)
 import           Control.Monad.Trans.Class
