@@ -10,6 +10,10 @@
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
+#if __GLASGOW_HASKELL__ < 710
+{-# LANGUAGE OverlappingInstances -#}
+#endif
+
 module Servant.Server.Internal
   ( module Servant.Server.Internal
   , module Servant.Server.Internal.PathInfo
