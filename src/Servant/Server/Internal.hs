@@ -11,7 +11,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 #if __GLASGOW_HASKELL__ < 710
-{-# LANGUAGE OverlappingInstances -#}
+{-# LANGUAGE OverlappingInstances #-}
 #endif
 
 module Servant.Server.Internal
