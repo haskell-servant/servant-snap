@@ -14,7 +14,6 @@ import           Data.Proxy
 import           Data.Text
 import           GHC.Generics
 import qualified Heist.Interpreted as I
-import           Snap.Core
 import           Snap.Snaplet
 import           Snap.Snaplet.Auth
 import           Snap.Snaplet.Session
@@ -22,9 +21,9 @@ import           Snap.Snaplet.Session.Backends.CookieSession
 import           Snap.Snaplet.Auth.Backends.JsonFile
 import           Snap.Snaplet.Heist
 import           Snap.Http.Server (defaultConfig)
-import           Snap.Http.Server.Config (setPort)
 
-import           Servant
+import           Servant.API
+import           Servant (serveSnap, Server, serveDirectory)
 
 -- * Example
 
@@ -55,7 +54,7 @@ type TestApi m =
   :<|> "doraw" :> Raw
 
 
-
+-- Our application has some of the usual Snaplets
 data App = App {
     _heist :: Snaplet (Heist App)
   , _sess  :: Snaplet SessionManager
@@ -63,18 +62,21 @@ data App = App {
   }
 makeLenses ''App
 
+instance HasHeist App where
+  heistLens = subSnaplet heist
+
 type AppHandler = Handler App App
 
 testApi :: Proxy (TestApi AppHandler)
 testApi = Proxy
+
 
 -- Server-side handlers.
 --
 -- There's one handler per endpoint, which, just like in the type
 -- that represents the API, are glued together using :<|>.
 --
--- Each handler runs in the 'EitherT ServantErr IO' monad.
-
+-- Each handler runs in the 'AppHandler' monad.
 
 server :: Server (TestApi AppHandler) AppHandler
 server = helloH
@@ -84,7 +86,7 @@ server = helloH
     :<|> serveDirectory "static"
     :<|> doRaw
 
-  where helloH :: MonadSnap m => Text -> Maybe Bool -> m Greet
+  where helloH :: Text -> Maybe Bool -> AppHandler Greet
         helloH name Nothing = helloH name (Just False)
         helloH name (Just False) = return . Greet $ "Hello, " <> name
         helloH name (Just True) = return . Greet . toUpper $ "Hello, " <> name
@@ -100,38 +102,22 @@ server = helloH
 
         deleteGreetH _ = return ()
 
-        -- doRaw :: Server Raw (Handler App App)
         doRaw = with auth $ do
           u <- currentUser
           let spl = "tName" ## I.textSplice (maybe "NoLogin" (pack . show) u)
           renderWithSplices "test" spl
 
 
--- Turn the server into a WAI app. 'serve' is provided by servant,
--- more precisely by the Servant.Server module.
---test :: MonadSnap m => Application m
-test :: AppHandler ()
-test = serveSnap testApi server
-
-
-instance HasHeist App where
-  heistLens = subSnaplet heist
-
 initApp :: SnapletInit App App
 initApp = makeSnaplet "myapp" "An example app in servant" Nothing $ do
   h <- nestSnaplet "" heist $ heistInit "templates"
   s <- nestSnaplet "sess" sess $ initCookieSessionManager "site_key.txt" "sess" Nothing (Just 3600)
   a <- nestSnaplet "" auth $ initJsonFileAuthManager defAuthSettings sess "users.json"
-  addRoutes [("api", test)]
+  addRoutes [("api", serveSnap testApi server)]
   return $ App h s a
 
 
 -- Run the server.
---
-runTestServer :: Int -> IO ()
-runTestServer port = serveSnaplet (setPort port defaultConfig)
-                      initApp
-
--- Put this all to work!
 main :: IO ()
-main = runTestServer 8001
+main = serveSnaplet defaultConfig initApp
+
