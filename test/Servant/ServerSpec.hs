@@ -23,6 +23,7 @@ import qualified Data.ByteString.Char8      as B8
 import qualified Data.ByteString.Lazy       as BL
 import           Data.CaseInsensitive       (mk)
 import           Data.Char                  (toUpper)
+import           Data.Functor               ((<$>), fmap)
 import           Data.Maybe                 (fromMaybe)
 import           Data.Proxy                 (Proxy (Proxy))
 import qualified Data.Set                   as Set
