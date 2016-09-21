@@ -1,5 +1,5 @@
 name:                servant-snap
-version:             0.7
+version:             0.7.0.2
 synopsis:            A family of combinators for defining webservices APIs and serving them
 description:
   Interpret a Servant API as a Snap server, using any Snaplets you like.
@@ -12,7 +12,7 @@ description:
   .
   <https://github.com/haskell-servant/servant-snap/blob/master/CHANGELOG.md CHANGELOG>
 homepage:            http://haskell-servant.github.io/
-Bug-reports:         http://github.com/haskell-servant/servant/issues
+Bug-reports:         http://github.com/haskell-servant/servant-snap/issues
 license:             BSD3
 license-file:        LICENSE
 author:              Alp Mestanogullari, Sönke Hahn, Julian K. Arni, Greg Hale
