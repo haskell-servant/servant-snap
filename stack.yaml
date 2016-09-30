@@ -1,29 +1,36 @@
 # Specifies the GHC version and set of packages available (e.g., lts-3.5, nightly-2015-09-21, ghc-7.10.2)
-resolver: lts-6.12
+resolver: lts-7.1
 
 # Local packages, usually specified by relative directory name
 packages:
 - '.'
 - location:
     git: https://github.com/snapframework/heist.git
-    commit: b27e744cb394f5bbf41f3fb0f56205bc503d9039
+    commit: 929ebf1ba7868c5fddae584e778548f19029c3ab
 - location:
     git: https://github.com/snapframework/io-streams-haproxy.git
     commit: 0a64cba062a0049d9dcdc438aa9758a843c8dfae
 - location:
     git: https://github.com/snapframework/snap-server.git
-    commit: ffd0e8d33711fb2dc1da5c30a9d38d9314b5cb6c
+    commit: b7ef5a1348c3f01456d77c2ef7177ecb216c9476
 - location:
     git: https://github.com/snapframework/snap-core.git
-    commit: b843d2b24985ad4942354b99c0b7832b3cb366bd
+    commit: e1e6ffcbd7ced448123bc5ed3d4da9f95c75206c
 - location:
     git: https://github.com/snapframework/snap.git
-    commit: a6064a7630c14fdcc3093264d35a8df4ce82a64a
+    commit: ec141e953493d4d29b57ad422fa6d4218320b3a2
+- location:
+    git: https://github.com/dbp/hspec-snap.git
+    commit: 5c55326a6e4cbefa5374700a33aad594bd25c8b2
+- location:
+    git: https://github.com/sigrlami/digestive-functors
+    commit: 66604c9d22ba622ebb3d7ce37afb4908eaff2c86
+  subdirs:
+  - digestive-functors
 - location:
     git: https://github.com/haskell-servant/servant.git
     commit: 6999b002977fa1a726ea627f716e47c677047713
   subdirs:
-#  - servant-blaze  
   - servant
 - location:
     git: https://github.com/dbp/hspec-snap.git
@@ -41,6 +48,7 @@ extra-deps:
    - aeson-0.11.1.4
    - base-orphans-0.5.4
    - text-1.2.2.1
+   - map-syntax-0.2.0.1
 
 # Override default flag values for local packages and extra-deps
 flags: {}
