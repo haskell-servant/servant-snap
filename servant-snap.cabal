@@ -1,5 +1,5 @@
 name:                servant-snap
-version:             0.7.0.3
+version:             0.7.0.4
 synopsis:            A family of combinators for defining webservices APIs and serving them
 description:
   Interpret a Servant API as a Snap server, using any Snaplets you like.
@@ -108,13 +108,12 @@ test-suite spec
     , exceptions
     , hspec >= 2.2.3 && < 2.4
     , process
-    , digestive-functors == 0.8.1.0
+    , digestive-functors >= 0.8.1.0 && < 0.9
     , time
     , hspec-snap >= 1.0 && < 1.1
-    , hspec-core == 2.2.3
+    , hspec-core >= 2.2.3 && < 2.3
     , http-types
     , HUnit
-    , digestive-functors == 0.8.1.0
     , mtl
     , network >= 2.6
     , QuickCheck
