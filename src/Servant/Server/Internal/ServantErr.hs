@@ -28,7 +28,7 @@ responseServantErr ServantErr{..} =
 throwError :: MonadSnap m => ServantErr -> m a
 throwError ServantErr{..} = do
   modifyResponse $ setResponseStatus errHTTPCode (BS.pack errReasonPhrase)
-  modifyResponse $ setHeader "Content-Type" "application/json"
+  modifyResponse $ \r -> L.foldr (uncurry setHeader) r errHeaders
   writeBS $ LBS.toStrict errBody
   getResponse >>= finishWith
 
