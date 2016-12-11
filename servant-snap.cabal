@@ -1,5 +1,5 @@
 name:                servant-snap
-version:             0.7.0.4
+version:             0.7.0.5
 synopsis:            A family of combinators for defining webservices APIs and serving them
 description:
   Interpret a Servant API as a Snap server, using any Snaplets you like.
