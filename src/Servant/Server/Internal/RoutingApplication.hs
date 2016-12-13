@@ -51,7 +51,9 @@ toApplication ra request respond = do
   r <- ra request routingRespond
   respond r
    where
-     routingRespond (Fail err) = respond $ responseServantErr err
+     routingRespond (Fail err) = case errHTTPCode err of
+       404 -> pass
+       _   -> respond $ responseServantErr err
      routingRespond (FailFatal err) = respond $ responseServantErr err
      routingRespond (Route v) = respond v
 
@@ -118,7 +120,7 @@ instance Monad m => Monad (DelayedM m) where
 instance MonadIO m => MonadIO (DelayedM m) where
   liftIO m = DelayedM (const . liftIO $ Route <$> m)
 
-instance Monad m => Alternative (DelayedM m) where
+instance (Monad m, MonadSnap m) => Alternative (DelayedM m) where
   empty   = DelayedM $ \_ -> return (Fail err404)
   a <|> b = DelayedM $ \req -> do
     respA <- runDelayedM a req

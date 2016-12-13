@@ -87,6 +87,7 @@ spec = do
   alternativeSpec
   responseHeadersSpec
   miscCombinatorSpec
+  fallthroughSpec
 
 ------------------------------------------------------------------------------
 -- * verbSpec {{{
@@ -677,6 +678,30 @@ miscCombinatorSpec = do
             (`shouldHaveBody` res)
 
 -- }}}
+
+type FFApi1 = "1" :> Get '[JSON] Int
+p1 = Proxy :: Proxy FFApi1
+ffServe1 = return 1
+type FFApi2 = "2" :> Get '[JSON] Int
+p2 = Proxy :: Proxy FFApi2
+ffServe2 = return 2
+
+fallthroughSpec :: Spec
+fallthroughSpec = do
+  describe "Allow multiple servant apis in the same snap router" $ do
+    let rts =      [("", serveSnap p1 ffServe1)
+                   ,("", serveSnap p2 ffServe2)
+                   ]
+        sInit = makeSnaplet "servantsnap" "test" Nothing $ do
+          addRoutes rts
+          return App
+        expectRoute r b =
+          SST.runHandler Nothing (mkRequest GET r "" [] "") (route rts) sInit
+          >>= b
+    it "Successfully matches"       $ expectRoute "1" (`shouldHaveBody` "1")
+    it "Successfully falls through" $ expectRoute "2" (`shouldHaveBody` "2")
+    it "404s when expected"         $ expectRoute "3" (`shouldHaveStatus` 404)
+
 ------------------------------------------------------------------------------
 -- * Test data types {{{
 ------------------------------------------------------------------------------
@@ -796,6 +821,7 @@ mkInitAndServer :: HasServer api
                 -> (SnapletInit App App, AppHandler ())
 mkInitAndServer api serv = let sRoute = serveSnap api serv
                            in  (app' [("", sRoute)], sRoute)
+
 
 mkRequest :: Method
           -> B8.ByteString
