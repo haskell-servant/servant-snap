@@ -136,9 +136,9 @@ runRouterEnv router env request respond = case router of
     _ -> respond $ Fail err404
   CaptureRouter router' ->
     case processedPathInfo request of
-      []   -> respond $ Fail err404
+      []   -> pass
       -- This case is to handle trailing slashes.
-      [""] -> respond $ Fail err404
+      [""] -> pass
       first : _
         -> let request' = reqSafeTail request
            in  runRouterEnv router' (first,env)  request' respond
