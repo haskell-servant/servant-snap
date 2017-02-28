@@ -144,7 +144,7 @@ verbSpec = do
 
           it "responds if the Accept header is supported" $ do
             response <- runRequest $ mkRequest method "" ""
-               [(hAccept, "application/json")] ""
+               [(hAccept, "application/json;charset=utf-8")] ""
             liftIO $ statusIs response status `shouldBe` True
 
         let sInit = app' verbRoutes
@@ -157,7 +157,7 @@ verbSpec = do
           -- HEAD and 214/215 need not return bodies
         unless (status `elem` [214, 215] || method == SC.HEAD) $
           it "returns the person" $ do
-             resp <- runUrl "/" 
+             resp <- runUrl "/"
              resp `shouldDecodeTo` alice
              resp `shouldHaveStatus` status
 
@@ -175,7 +175,7 @@ verbSpec = do
         it "sets the content-type header" $ do
           resp <- SST.runHandler Nothing (mkRequest method "" "" [] "")
                   (serveSnap api server) sInit
-          resp `shouldHaveHeaders` [("Content-Type", "application/json")]
+          resp `shouldHaveHeaders` [("Content-Type", "application/json;charset=utf-8")]
 
         unless (status `elem` [214, 215] || method == SC.HEAD) $
           it "allows modular specification of supported content types" $ do
@@ -329,7 +329,7 @@ queryParamSpec = do
   describe "Servant.API.QueryParam" $ do
 
       let runTest :: B8.ByteString -> B8.ByteString -> IO (Either T.Text Response)
-          runTest p qs = runReqOnApi queryParamApi qpServer SC.GET p qs [(hContentType,"application/json")] ""
+          runTest p qs = runReqOnApi queryParamApi qpServer SC.GET p qs [(hContentType,"application/json;charset=utf-8")] ""
 
       it "allows retrieving simple GET parameters" $
         runTest "" "?name=bob" >>= (`shouldDecodeTo` alice {name="bob"})
@@ -425,8 +425,8 @@ reqBodySpec = do
   describe "Servant.API.ReqBody" $ do
 
     let runTest m p ct bod = runReqOnApi reqBodyApi server m p "" [(hContentType,ct)] bod
-        goodCT = -- "application/json;charset=utf-8"
-                 "application/json"
+        goodCT = "application/json;charset=utf-8"
+                 -- "application/json"
         badCT  = "application/nonsense"
 
     it "passes the argument to the handler" $ do
