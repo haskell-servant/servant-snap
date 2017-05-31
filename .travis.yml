@@ -50,7 +50,7 @@ install:
  - git clone https://github.com/imalsogreg/hspec-snap
  - cabal get hspec-discover
  - cabal new-build exe:hspec-discover
- - cp -v dist-newstyle/build/*/*/*/*/hspec-discover/build/hspec-discover/hspec-discover
+ - cp -v dist-newstyle/build/*/*/*/*/hspec-discover/build/hspec-discover/hspec-discover ${HOME}/bin
  - pwd
 
  - cabal new-build ${TEST} ${BENCH} --dep -j2
