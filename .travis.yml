@@ -28,7 +28,7 @@ matrix:
       addons: {apt: {packages: [cabal-install-head,ghc-7.10.3], sources: [hvr-ghc]}}
     - env: CABALVER=head GHCVER=8.0.2
       compiler: ": #GHC 8.0.2"
-      addons: {apt: {packages: [cabal-install-head,ghc-8.0.1], sources: [hvr-ghc]}}
+      addons: {apt: {packages: [cabal-install-head,ghc-8.0.2], sources: [hvr-ghc]}}
     - env: CABALVER=head GHCVER=8.2.1
       compiler: ": #GHC 8.2.1"
       addons: {apt: {packages: [cabal-install-head,ghc-8.2.1], sources: [hvr-ghc]}}
@@ -50,10 +50,13 @@ install:
  - mkdir tmp; cd tmp; cabal get hspec-discover-2.2.4; cd hspec-discover-2.2.4/
  - cabal new-build exe:hspec-discover
  - cp -v dist-newstyle/build/*/*/hspec-discover-2.2.4/c/hspec-discover/build/hspec-discover/hspec-discover ${HOME}/bin/
+ - pwd
+ - cd ..
 
  - git clone https://github.com/imalsogreg/hspec-snap
  - cd hspec-snap; cabal new-build
- - cd ../..
+ - pwd
+ - cd ..
  
  - cabal new-build ${TEST} ${BENCH} --dep -j2
 
