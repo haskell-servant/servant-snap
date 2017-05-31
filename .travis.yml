@@ -47,17 +47,13 @@ install:
  - sed -i 's/^jobs:/-- jobs:/' ${HOME}/.cabal/config
 
  # we need hspec-discover :-(
+ - git clone https://github.com/imalsogreg/hspec-snap
  - mkdir tmp; cd tmp; cabal get hspec-discover-2.2.4; cd hspec-discover-2.2.4/
  - cabal new-build exe:hspec-discover
  - cp -v dist-newstyle/build/*/*/hspec-discover-2.2.4/c/hspec-discover/build/hspec-discover/hspec-discover ${HOME}/bin/
  - pwd
- - cd ..
-
- - git clone https://github.com/imalsogreg/hspec-snap
- - cd hspec-snap; cabal new-build
- - pwd
  - cd ../..
- 
+
  - cabal new-build ${TEST} ${BENCH} --dep -j2
 
 # Here starts the actual work to be performed for the package under test;
