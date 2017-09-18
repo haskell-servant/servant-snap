@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP               #-}
+{-# LANGUAGE DataKinds         #-}
 {-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes        #-}
@@ -9,10 +10,15 @@
 module Servant.Server
   ( -- * Run a snap handler from an API
     serveSnap
+  , serveSnapWithContext
 
   , -- * Handlers for all standard combinators
     HasServer(..)
   , Server
+
+  , -- * Reexports
+    module Servant.Server.Internal.BasicAuth
+  , module Servant.Server.Internal.Context
 
     -- ** Basic functions and datatypes
 
@@ -57,6 +63,8 @@ module Servant.Server
 
 import           Data.Proxy                        (Proxy(..))
 import           Servant.Server.Internal
+import           Servant.Server.Internal.BasicAuth
+import           Servant.Server.Internal.Context
 import           Servant.Server.Internal.SnapShims
 import           Snap.Core                         hiding (route)
 
@@ -86,15 +94,24 @@ import           Snap.Core                         hiding (route)
 --
 
 serveApplication
-  :: forall layout m.(HasServer layout, MonadSnap m)
+  :: forall layout context m.(HasServer layout context m, MonadSnap m)
   => Proxy layout
-  -> Server layout m
+  -> Context context
+  -> Server layout context m
   -> Application m
-serveApplication p server = toApplication (runRouter (route p (emptyDelayed (Proxy :: Proxy (m :: * -> *)) ((Route server)))))
+serveApplication p ctx server = toApplication (runRouter (route p ctx (emptyDelayed (Proxy :: Proxy (m :: * -> *)) ((Route server)))))
+
+serveSnapWithContext
+  :: forall layout context m.(HasServer layout context m, MonadSnap m)
+  => Proxy layout
+  -> Context context
+  -> Server layout context m
+  -> m ()
+serveSnapWithContext p ctx server = applicationToSnap $ serveApplication p ctx server
 
 serveSnap
-  :: forall layout m.(HasServer layout, MonadSnap m)
+  :: forall layout m.(HasServer layout '[] m, MonadSnap m)
   => Proxy layout
-  -> Server layout m
+  -> Server layout '[] m
   -> m ()
-serveSnap p server = applicationToSnap $ serveApplication p server
+serveSnap p server = serveSnapWithContext p EmptyContext server

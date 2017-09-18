@@ -1,3 +1,8 @@
+0.8
+-------
+
+Copy BasicAuth and Context from servant-server to support basic auth checking
+
 0.7.1
 -------
 

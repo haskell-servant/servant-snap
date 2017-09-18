@@ -78,7 +78,7 @@ testApi = Proxy
 --
 -- Each handler runs in the 'AppHandler' monad.
 
-server :: Server (TestApi AppHandler) AppHandler
+server :: Server (TestApi AppHandler) '[] AppHandler
 server = helloH
     :<|> helloH'
     :<|> postGreetH
