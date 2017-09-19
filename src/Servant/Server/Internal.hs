@@ -48,7 +48,7 @@ import           Web.HttpApiData             (FromHttpApiData,
                                               parseUrlPieceMaybe,
                                               parseUrlPieces)
 import           Snap.Core                   hiding (Headers, Method,
-                                              getResponse, headers, route,
+                                              getResponse, route,
                                               method, withRequest)
 import           Servant.API                 ((:<|>) (..), (:>), BasicAuth,
                                               Capture,
@@ -167,12 +167,14 @@ allowedMethod method request =
 processMethodRouter :: Maybe (BL.ByteString, BL.ByteString) -> Status -> Method
                     -> Maybe [(HeaderName, B.ByteString)]
                     -> Request -> RouteResult Response
-processMethodRouter handleA status method headers request = case handleA of
+processMethodRouter handleA status method rHeaders request = case handleA of
   Nothing -> FailFatal err406 -- this should not happen (checked before), so we make it fatal if it does
   Just (contentT, body) -> Route $ responseLBS status hdrs bdy
     where
       bdy = if allowedMethodHead method request then "" else body
-      hdrs = (hContentType, cs contentT) : fromMaybe [] headers
+      hdrs = (hContentType, cs contentT)
+             : listHeaders (headers request)
+             <> fromMaybe [] rHeaders
 
 methodCheck :: MonadSnap m => Method -> Request -> DelayedM m ()
 methodCheck method request
@@ -219,9 +221,9 @@ methodRouterHeaders method proxy status action = leafRouter route'
           in runAction (action `addMethodCheck` methodCheck method request
                                `addAcceptCheck` acceptCheck proxy accH
                        ) env request respond $ \ output -> do
-                let headers = getHeaders output
+                let hdrs    = getHeaders output
                     handleA = handleAcceptH proxy (AcceptHeader accH) (getResponse output)
-                processMethodRouter handleA status method (Just headers) request
+                processMethodRouter handleA status method (Just hdrs) request
 
 
 instance {-# OVERLAPPABLE #-} (AllCTRender ctypes a,
