@@ -5,19 +5,19 @@
 , io-streams, lens, map-syntax, mmorph, mtl, network, network-uri
 , parsec, process, QuickCheck, servant, snap, snap-core
 , snap-server, stdenv, string-conversions, temporary, text, time
-, transformers
+, transformers, word8
 }:
 mkDerivation {
   pname = "servant-snap";
-  version = "0.7.2";
+  version = "0.8";
   src = ./.;
   isLibrary = true;
   isExecutable = true;
   libraryHaskellDepends = [
-    aeson attoparsec base bytestring case-insensitive containers either
-    filepath http-api-data http-types io-streams mmorph mtl network-uri
-    servant snap snap-core snap-server string-conversions text
-    transformers
+    aeson attoparsec base base64-bytestring bytestring case-insensitive
+    containers either filepath http-api-data http-types io-streams
+    mmorph mtl network-uri servant snap snap-core snap-server
+    string-conversions text transformers word8
   ];
   executableHaskellDepends = [
     aeson base bytestring either errors heist lens map-syntax servant

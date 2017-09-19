@@ -1,5 +1,7 @@
 {-# LANGUAGE CPP                  #-}
 {-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DeriveFunctor        #-}
+{-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
@@ -33,6 +35,7 @@ import           Data.Proxy
 import           Data.String                 (fromString)
 import           Data.String.Conversions     (cs, (<>))
 import           Data.Text                   (Text)
+import           GHC.Generics
 import           GHC.TypeLits                (KnownNat, KnownSymbol, natVal,
                                               symbolVal)
 import           Network.HTTP.Types          (HeaderName, Method,
@@ -47,7 +50,8 @@ import           Web.HttpApiData             (FromHttpApiData,
 import           Snap.Core                   hiding (Headers, Method,
                                               getResponse, headers, route,
                                               method, withRequest)
-import           Servant.API                 ((:<|>) (..), (:>), Capture,
+import           Servant.API                 ((:<|>) (..), (:>), BasicAuth,
+                                              Capture,
                                               CaptureAll, Header,
                                               IsSecure(..), QueryFlag,
                                               QueryParam, QueryParams, Raw,
@@ -60,21 +64,25 @@ import           Servant.API.ResponseHeaders (Headers, getResponse, GetHeaders,
                                               getHeaders)
 -- import           Servant.Common.Text         (FromText, fromText)
 
+import           Servant.Server.Internal.BasicAuth
+import           Servant.Server.Internal.Context
 import           Servant.Server.Internal.PathInfo
 import           Servant.Server.Internal.Router
 import           Servant.Server.Internal.RoutingApplication
 import           Servant.Server.Internal.ServantErr
 import           Servant.Server.Internal.SnapShims
 
-class HasServer api where
-  type ServerT api (m :: * -> *) :: *
+-- TODO: add MonadSnap m => m ?
+class HasServer api context (m :: * -> *) where
+  type ServerT api context m :: *
 
   route :: MonadSnap m
         => Proxy api
-        -> Delayed m env (Server api m)
+        -> Context context
+        -> Delayed m env (Server api context m)
         -> Router m env
 
-type Server api m = ServerT api m
+type Server api context m = ServerT api context m
 
 -- * Instances
 
@@ -89,12 +97,12 @@ type Server api m = ServerT api m
 -- > server = listAllBooks :<|> postBook
 -- >   where listAllBooks = ...
 -- >         postBook book = ...
-instance (HasServer a, HasServer b) => HasServer (a :<|> b) where
+instance (HasServer a ctx m, HasServer b ctx m) => HasServer (a :<|> b) ctx m where
 
-  type ServerT (a :<|> b) m = ServerT a m :<|> ServerT b m
+  type ServerT (a :<|> b) ctx m = ServerT a ctx m :<|> ServerT b ctx m
 
-  route Proxy server = choice (route pa ((\ (a :<|> _) -> a) <$> server))
-                              (route pb ((\ (_ :<|> b) -> b) <$> server))
+  route Proxy ctx server = choice (route pa ctx ((\ (a :<|> _) -> a) <$> server))
+                                  (route pb ctx ((\ (_ :<|> b) -> b) <$> server))
     where pa = Proxy :: Proxy a
           pb = Proxy :: Proxy b
 
@@ -118,30 +126,30 @@ captured _ = parseUrlPieceMaybe
 -- > server = getBook
 -- >   where getBook :: Text -> EitherT ServantErr IO Book
 -- >         getBook isbn = ...
-instance (FromHttpApiData a, HasServer sublayout)
-      => HasServer (Capture capture a :> sublayout) where
+instance (FromHttpApiData a, HasServer sublayout context m)
+      => HasServer (Capture capture a :> sublayout) context m where
 
-  type ServerT (Capture capture a :> sublayout) m =
-     a -> ServerT sublayout m
+  type ServerT (Capture capture a :> sublayout) context m =
+     a -> ServerT sublayout context m
 
-  route Proxy d =
+  route Proxy ctx d =
     CaptureRouter $
-      route (Proxy :: Proxy sublayout)
+      route (Proxy :: Proxy sublayout) ctx
         (addCapture d $ \ txt -> case parseUrlPieceMaybe txt of
                                    Nothing -> delayedFail err400
                                    Just v  -> return v
         )
 
 
-instance (FromHttpApiData a, HasServer sublayout)
-      => HasServer (CaptureAll capture a :> sublayout) where
+instance (FromHttpApiData a, HasServer sublayout context m)
+      => HasServer (CaptureAll capture a :> sublayout) context m where
 
-  type ServerT (CaptureAll capture a :> sublayout) m =
-    [a] -> ServerT sublayout m
+  type ServerT (CaptureAll capture a :> sublayout) context m =
+    [a] -> ServerT sublayout context m
 
-  route Proxy d =
+  route Proxy ctx d =
     CaptureAllRouter $
-        route (Proxy :: Proxy sublayout)
+        route (Proxy :: Proxy sublayout) ctx
               (addCapture d $ \ txts -> case parseUrlPieces txts of
                  Left _  -> delayedFail err400
                  Right v -> return v
@@ -219,9 +227,9 @@ methodRouterHeaders method proxy status action = leafRouter route'
 instance {-# OVERLAPPABLE #-} (AllCTRender ctypes a,
                                ReflectMethod method,
                                KnownNat status)
-  => HasServer (Verb method status ctypes a) where
-  type ServerT (Verb method status ctypes  a) m = m a
-  route Proxy = methodRouter method (Proxy :: Proxy ctypes) status
+  => HasServer (Verb method status ctypes a) context m where
+  type ServerT (Verb method status ctypes  a) context m = m a
+  route Proxy _ = methodRouter method (Proxy :: Proxy ctypes) status
     where method = reflectMethod (Proxy :: Proxy method)
           status = toEnum . fromInteger $ natVal (Proxy :: Proxy status)
 
@@ -229,10 +237,10 @@ instance {-# OVERLAPPABLE #-} (AllCTRender ctypes a,
                                ReflectMethod method,
                                KnownNat status,
                                GetHeaders (Headers h a))
-  => HasServer (Verb method status ctypes (Headers h a)) where
+  => HasServer (Verb method status ctypes (Headers h a)) context m where
 
-  type ServerT (Verb method status ctypes (Headers h a)) m = m (Headers h a)
-  route Proxy = methodRouterHeaders method (Proxy :: Proxy ctypes) status
+  type ServerT (Verb method status ctypes (Headers h a)) context m = m (Headers h a)
+  route Proxy _ = methodRouterHeaders method (Proxy :: Proxy ctypes) status
     where method = reflectMethod (Proxy :: Proxy method)
           status = toEnum . fromInteger $ natVal (Proxy :: Proxy status)
 
@@ -258,15 +266,15 @@ instance {-# OVERLAPPABLE #-} (AllCTRender ctypes a,
 -- > server = viewReferer
 -- >   where viewReferer :: Referer -> EitherT ServantErr IO referer
 -- >         viewReferer referer = return referer
-instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout)
-      => HasServer (Header sym a :> sublayout) where
+instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout context m)
+      => HasServer (Header sym a :> sublayout) context m where
 
-  type ServerT (Header sym a :> sublayout) m =
-    Maybe a -> ServerT sublayout m
+  type ServerT (Header sym a :> sublayout) context m =
+    Maybe a -> ServerT sublayout context m
 
-  route Proxy subserver =
+  route Proxy ctx subserver =
     let mheader req = parseHeaderMaybe =<< getHeader str req
-    in  route (Proxy :: Proxy sublayout) (passToServer subserver mheader)
+    in  route (Proxy :: Proxy sublayout) ctx (passToServer subserver mheader)
     where str = fromString $ symbolVal (Proxy :: Proxy sym)
 
 
@@ -291,13 +299,13 @@ instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout)
 -- >   where getBooksBy :: Maybe Text -> EitherT ServantErr IO [Book]
 -- >         getBooksBy Nothing       = ...return all books...
 -- >         getBooksBy (Just author) = ...return books by the given author...
-instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout)
-      => HasServer (QueryParam sym a :> sublayout) where
+instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout context m)
+      => HasServer (QueryParam sym a :> sublayout) context m where
 
-  type ServerT (QueryParam sym a :> sublayout) m =
-    Maybe a -> ServerT sublayout m
+  type ServerT (QueryParam sym a :> sublayout) context m =
+    Maybe a -> ServerT sublayout context m
 
-  route Proxy subserver =
+  route Proxy ctx subserver =
     let querytext r = parseQueryText $ rqQueryString r
         param r =
           case lookup paramname (querytext r) of
@@ -305,7 +313,7 @@ instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout)
             Just Nothing  -> Nothing -- param present with no value -> Nothing
             Just (Just v) -> parseQueryParamMaybe v -- if present, we try to convert to
                                         -- the right type
-    in route (Proxy :: Proxy sublayout) (passToServer subserver param)
+    in route (Proxy :: Proxy sublayout) ctx (passToServer subserver param)
     where paramname = cs $ symbolVal (Proxy :: Proxy sym)
 
 
@@ -328,20 +336,20 @@ instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout)
 -- > server = getBooksBy
 -- >   where getBooksBy :: [Text] -> EitherT ServantErr IO [Book]
 -- >         getBooksBy authors = ...return all books by these authors...
-instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout)
-      => HasServer (QueryParams sym a :> sublayout) where
+instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout context m)
+      => HasServer (QueryParams sym a :> sublayout) context m where
 
-  type ServerT (QueryParams sym a :> sublayout) m =
-    [a] -> ServerT sublayout m
+  type ServerT (QueryParams sym a :> sublayout) context m =
+    [a] -> ServerT sublayout context m
 
-  route Proxy subserver =
+  route Proxy ctx subserver =
     let querytext r = parseQueryText $ rqQueryString r
         -- if sym is "foo", we look for query string parameters
         -- named "foo" or "foo[]" and call parseQueryParam on the
         -- corresponding values
         parameters r = filter looksLikeParam (querytext r)
         values r = mapMaybe (convert . snd) (parameters r)
-    in  route (Proxy :: Proxy sublayout) (passToServer subserver values)
+    in  route (Proxy :: Proxy sublayout) ctx (passToServer subserver values)
     where paramname = cs $ symbolVal (Proxy :: Proxy sym)
           looksLikeParam (name, _) = name == paramname || name == (paramname <> "[]")
           convert Nothing = Nothing
@@ -360,19 +368,19 @@ instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout)
 -- > server = getBooks
 -- >   where getBooks :: Bool -> EitherT ServantErr IO [Book]
 -- >         getBooks onlyPublished = ...return all books, or only the ones that are already published, depending on the argument...
-instance (KnownSymbol sym, HasServer sublayout)
-      => HasServer (QueryFlag sym :> sublayout) where
+instance (KnownSymbol sym, HasServer sublayout context m)
+      => HasServer (QueryFlag sym :> sublayout) context m where
 
-  type ServerT (QueryFlag sym :> sublayout) m =
-    Bool -> ServerT sublayout m
+  type ServerT (QueryFlag sym :> sublayout) context m =
+    Bool -> ServerT sublayout context m
 
-  route Proxy subserver =
+  route Proxy ctx subserver =
     let querytext r = parseQueryText $ rqQueryString r
         param r = case lookup paramname (querytext r) of
           Just Nothing  -> True  -- param is there, with no value
           Just (Just v) -> examine v -- param with a value
           Nothing       -> False -- param not in the query string
-    in  route (Proxy :: Proxy sublayout) (passToServer subserver param)
+    in  route (Proxy :: Proxy sublayout) ctx (passToServer subserver param)
     where paramname = cs $ symbolVal (Proxy :: Proxy sym)
           examine v | v == "true" || v == "1" || v == "" = True
                     | otherwise = False
@@ -386,11 +394,11 @@ instance (KnownSymbol sym, HasServer sublayout)
 -- >
 -- > server :: Server MyApi
 -- > server = serveDirectory "/var/www/images"
-instance HasServer Raw where
+instance HasServer Raw context m where
 
-  type ServerT Raw m = m ()
+  type ServerT Raw context m = m ()
 
-  route Proxy rawApplication = RawRouter $ \ env request respond -> do
+  route Proxy _ rawApplication = RawRouter $ \ env request respond -> do
     r <- runDelayed rawApplication env request
     case r of
       Route app   -> (snapToApplication' app) request (respond . Route)
@@ -418,14 +426,14 @@ instance HasServer Raw where
 -- > server = postBook
 -- >   where postBook :: Book -> EitherT ServantErr IO Book
 -- >         postBook book = ...insert into your db...
-instance ( AllCTUnrender list a, HasServer sublayout
-         ) => HasServer (ReqBody list a :> sublayout) where
+instance ( AllCTUnrender list a, HasServer sublayout context m
+         ) => HasServer (ReqBody list a :> sublayout) context m where
 
-  type ServerT (ReqBody list a :> sublayout) m =
-    a -> ServerT sublayout m
+  type ServerT (ReqBody list a :> sublayout) context m =
+    a -> ServerT sublayout context m
 
-  route Proxy subserver =
-    route (Proxy :: Proxy sublayout) (addBodyCheck (subserver ) bodyCheck')
+  route Proxy ctx subserver =
+    route (Proxy :: Proxy sublayout) ctx (addBodyCheck (subserver ) bodyCheck')
     where
       -- bodyCheck' :: DelayedM m a
       bodyCheck' = do
@@ -441,35 +449,55 @@ instance ( AllCTUnrender list a, HasServer sublayout
 
 -- | Make sure the incoming request starts with @"/path"@, strip it and
 -- pass the rest of the request path to @sublayout@.
-instance (KnownSymbol path, HasServer sublayout) => HasServer (path :> sublayout) where
+instance (KnownSymbol path, HasServer sublayout context m) => HasServer (path :> sublayout) context m where
 
-  type ServerT (path :> sublayout) m = ServerT sublayout m
+  type ServerT (path :> sublayout) context m = ServerT sublayout context m
 
-  route Proxy subserver =
+  route Proxy ctx subserver =
     pathRouter
       (cs (symbolVal proxyPath))
-      (route (Proxy :: Proxy sublayout) subserver)
+      (route (Proxy :: Proxy sublayout) ctx subserver)
     where proxyPath = Proxy :: Proxy path
 
 
-instance HasServer api => HasServer (HttpVersion :> api) where
-  type ServerT (HttpVersion :> api) m = HttpVersion -> ServerT api m
+instance HasServer api context m => HasServer (HttpVersion :> api) context m where
+  type ServerT (HttpVersion :> api) context m = HttpVersion -> ServerT api context m
 
-  route Proxy subserver =
-    route (Proxy :: Proxy api) (passToServer subserver rqVersion)
+  route Proxy ctx subserver =
+    route (Proxy :: Proxy api) ctx (passToServer subserver rqVersion)
 
 
-instance HasServer api => HasServer (IsSecure :> api) where
-  type ServerT (IsSecure :> api) m = IsSecure -> ServerT api m
+instance HasServer api context m => HasServer (IsSecure :> api) context m where
+  type ServerT (IsSecure :> api) context m = IsSecure -> ServerT api context m
 
-  route Proxy subserver =
-    route (Proxy :: Proxy api) (passToServer subserver (bool NotSecure Secure . rqIsSecure))
+  route Proxy ctx subserver =
+    route (Proxy :: Proxy api) ctx (passToServer subserver (bool NotSecure Secure . rqIsSecure))
 
-instance HasServer api => HasServer (RemoteHost :> api) where
-  type ServerT (RemoteHost :> api) m = B.ByteString -> ServerT api m
+instance HasServer api context m => HasServer (RemoteHost :> api) context m where
+  type ServerT (RemoteHost :> api) context m = B.ByteString -> ServerT api context m
 
-  route Proxy subserver =
-    route (Proxy :: Proxy api) (passToServer subserver rqHostName)
+  route Proxy ctx subserver =
+    route (Proxy :: Proxy api) ctx (passToServer subserver rqHostName)
+
+-- newtype BasicAuthCheck m usr =
+--   BasicAuthCheck { unBasicAuthCheck :: BasicAuthData -> m (BasicAuthResult usr) }
+--   deriving (Functor, Generic)
+
+data BasicAuthResult usr = Unauthorized | BadPassword | NoSuchUser | Authorized usr
+  deriving (Functor, Eq, Read, Show, Generic)
+
+instance (HasServer api context m,
+          KnownSymbol realm,
+          HasContextEntry context (BasicAuthCheck m usr)
+         ) => HasServer (BasicAuth realm usr :> api) context m where
+  type ServerT (BasicAuth realm usr :> api) context m = usr -> ServerT api context m
+
+  route Proxy ctx subserver =
+    route (Proxy :: Proxy api) ctx (subserver `addAuthCheck` authCheck)
+    where
+      realm = B.pack $ symbolVal (Proxy :: Proxy realm)
+      basicAuthContext = getContextEntry ctx
+      authCheck = withRequest $ \req -> runBasicAuth req realm basicAuthContext
 
 ct_wildcard :: B.ByteString
 ct_wildcard = "*" <> "/" <> "*" -- Because CPP

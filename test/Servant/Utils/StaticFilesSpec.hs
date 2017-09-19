@@ -37,7 +37,7 @@ api = Proxy
 app :: SnapletInit () ()
 app = makeSnaplet "servantsnap" "A test for servant-snap" Nothing (return ())
 
-server :: Server Api AppHandler
+server :: Server Api '[] AppHandler
 server =
        (\ name_ -> return (Person name_ 42))
   :<|> serveDirectory "static"

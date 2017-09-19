@@ -3,9 +3,11 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE KindSignatures       #-}
+{-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -15,16 +17,19 @@ module Servant.ServerSpec where
 
 
 -------------------------------------------------------------------------------
-import           Control.Monad              (forM_, unless, when)
+import           Control.Lens               (makeLenses)
+import           Control.Monad              (forM_, unless, void, when)
 import           Control.Monad.IO.Class     (liftIO)
 import           Data.Aeson                 (FromJSON, ToJSON)
 import qualified Data.Aeson                 as A
+import qualified Data.ByteString.Base64     as B64
 import qualified Data.ByteString.Char8      as B8
 import qualified Data.ByteString.Lazy       as BL
 import           Data.CaseInsensitive       (mk)
 import           Data.Char                  (toUpper)
-import           Data.Functor               ((<$>), fmap)
+import           Data.Functor               ((<$>))
 import           Data.Maybe                 (fromMaybe)
+import           Data.Monoid
 import           Data.Proxy                 (Proxy (Proxy))
 import qualified Data.Set                   as Set
 import qualified Data.Text                  as T
@@ -45,7 +50,7 @@ import           Test.Hspec.Snap            hiding (NotFound)
 import qualified Test.Hspec.Snap            as THS
 import qualified Test.HUnit                 as HU
 import           Servant.API                ((:<|>) (..), (:>),
-                                             addHeader, Capture,
+                                             addHeader, BasicAuth, Capture,
                                              CaptureAll, Header (..), Headers,
                                              IsSecure(..), JSON, NoContent(..),
                                              PlainText, QueryFlag, QueryParam,
@@ -54,13 +59,22 @@ import           Servant.API                ((:<|>) (..), (:>),
 import           Servant.API.Verbs          (Verb, Get, Post, Put, Delete,
                                              Patch)
 import qualified Servant.API.Verbs          as V
-import           Servant.Server             hiding (route)
-import           Servant.Server.Internal    (HasServer)
+import           Servant.Server              hiding (route)
+import           Servant.Server.Internal     (HasServer)
+import           Servant.Server.Internal.BasicAuth
+import           Servant.Server.Internal.Context
+import           Snap.Snaplet.Auth
+import           Snap.Snaplet.Auth.Backends.JsonFile
+import           Snap.Snaplet.Session
+import           Snap.Snaplet.Session.Backends.CookieSession
 
 -------------------------------------------------------------------------------
 -- * test data types
 
-data App = App
+data App = App { _auth :: Snaplet (AuthManager App)
+               , _sess :: Snaplet SessionManager}
+makeLenses 'App
+
 type AppHandler = Handler App App
 
 app :: SnapletInit App App
@@ -68,8 +82,22 @@ app = app' []
 
 app' :: [(B8.ByteString, AppHandler ())] -> SnapletInit App App
 app' rs = makeSnaplet "servantsnap" "A test app for servant-snap" Nothing $ do
+  s <- nestSnaplet "sess" sess $
+           initCookieSessionManager "site_key.txt" "sess" Nothing (Just 3600)
+  a <- nestSnaplet "auth" auth $ initJsonFileAuthManager defAuthSettings sess "users.json"
   addRoutes rs
-  return App
+  wrapSite (createTestUserIfMissing >>)
+  return (App a s)
+
+createTestUserIfMissing :: Handler App App ()
+createTestUserIfMissing =
+  with auth $ usernameExists testLogin >>= \case
+    True  -> return ()
+    False -> void $ createUser testLogin testPassword
+
+testLogin    = "greg"
+testPassword = "p@ssword"
+
 -------------------------------------------------------------------------------
 
 
@@ -88,6 +116,7 @@ spec = do
   responseHeadersSpec
   miscCombinatorSpec
   fallthroughSpec
+  basicAuthSpec
 
 ------------------------------------------------------------------------------
 -- * verbSpec {{{
@@ -105,7 +134,7 @@ type VerbApi method status
 
 verbSpec :: Spec
 verbSpec = do
-  let server :: Server (VerbApi method status) AppHandler
+  let server :: Server (VerbApi method status) '[] AppHandler
       server = return alice
           :<|> return NoContent
           :<|> return (addHeader 5 alice)
@@ -186,12 +215,12 @@ verbSpec = do
             resp `shouldHaveStatus` status
             resp `shouldHaveBody` "B"
 
-  test "GET 200" get200 (routes get200 server) SC.GET 200
-  test "POST 210" post210 (routes post210 server) SC.POST 210
-  test "PUT 203" put203 (routes put203 server) SC.PUT 203
-  test "DELETE 280" delete280 (routes delete280 server) SC.DELETE  280
-  test "PATCH 214" patch214 (routes patch214 server) SC.PATCH 214
-  test "GET 200 with HEAD" get200 (routes get200 server) SC.HEAD 200
+  test "GET 200" get200 (routes get200 EmptyContext server) SC.GET 200
+  test "POST 210" post210 (routes post210 EmptyContext server) SC.POST 210
+  test "PUT 203" put203 (routes put203 EmptyContext server) SC.PUT 203
+  test "DELETE 280" delete280 (routes delete280 EmptyContext server) SC.DELETE  280
+  test "PATCH 214" patch214 (routes patch214 EmptyContext server) SC.PATCH 214
+  test "GET 200 with HEAD" get200 (routes get200 EmptyContext server) SC.HEAD 200
 
 -- }}}
 
@@ -213,7 +242,7 @@ type CaptureApi2 = Capture "captured" String :> Raw
 captureApi2 :: Proxy CaptureApi2
 captureApi2 = Proxy
 
-captureServer2 :: Server CaptureApi2 AppHandler
+captureServer2 :: Server CaptureApi2 '[] AppHandler
 captureServer2 _ = do
   rq <- getRequest
   writeBS (SC.rqPathInfo rq) 
@@ -221,8 +250,8 @@ captureServer2 _ = do
 captureSpec :: Spec
 captureSpec = do -- snap (route (routes captureApi captureServer)) app $  
 
-  let ( sInit , _ ) = mkInitAndServer captureApi captureServer
-      ( sInit2, _ ) = mkInitAndServer captureApi2 captureServer2
+  let ( sInit , _ ) = mkInitAndServer captureApi  EmptyContext captureServer
+      ( sInit2, _ ) = mkInitAndServer captureApi2 EmptyContext captureServer2
       runReq r method api serv i =
         SST.runHandler Nothing (mkRequest method r "" [] "")
         (serveSnap api serv) i
@@ -260,7 +289,7 @@ captureAllSpec :: Spec
 captureAllSpec = do
   describe "Servant.API.CaptureAll" $ do
 
-      let runUrl u = runReqOnApi captureAllApi  captureAllServer SC.GET u "" [] ""
+      let runUrl u = runReqOnApi captureAllApi EmptyContext captureAllServer SC.GET u "" [] ""
       it "can capture a single element of the 'pathInfo'" $ do
         runUrl "/2" >>= (`shouldDecodeTo` tweety)
         -- liftIO $ decodesTo response tweety `shouldBe` True
@@ -292,7 +321,7 @@ captureAllSpec = do
       it "consumes everything from pathInfo" $ do
         let api' = (Proxy :: Proxy (CaptureAll "segments" String :> Raw))
             srv' = (\_ -> getRequest >>= writeBS . rqPathInfo)
-        req <- runReqOnApi api' srv' SC.GET "/captured/foo/bar/baz" "" [] ""
+        req <- runReqOnApi api' EmptyContext srv' SC.GET "/captured/foo/bar/baz" "" [] ""
         req `shouldHaveBody` ""
 
         -- (\ _captured request_ respond ->
@@ -312,7 +341,7 @@ type QueryParamApi = QueryParam "name" String :> Get '[JSON] Person
 queryParamApi :: Proxy QueryParamApi
 queryParamApi = Proxy
 
-qpServer :: Server QueryParamApi AppHandler
+qpServer :: Server QueryParamApi '[] AppHandler
 qpServer = queryParamServer :<|> qpNames :<|> qpCapitalize
 
   where qpNames (_:name2:_) = return alice { name = name2 }
@@ -329,7 +358,7 @@ queryParamSpec = do
   describe "Servant.API.QueryParam" $ do
 
       let runTest :: B8.ByteString -> B8.ByteString -> IO (Either T.Text Response)
-          runTest p qs = runReqOnApi queryParamApi qpServer SC.GET p qs [(hContentType,"application/json;charset=utf-8")] ""
+          runTest p qs = runReqOnApi queryParamApi EmptyContext qpServer SC.GET p qs [(hContentType,"application/json;charset=utf-8")] ""
 
       it "allows retrieving simple GET parameters" $
         runTest "" "?name=bob" >>= (`shouldDecodeTo` alice {name="bob"})
@@ -424,7 +453,7 @@ reqBodySpec :: Spec
 reqBodySpec = do
   describe "Servant.API.ReqBody" $ do
 
-    let runTest m p ct bod = runReqOnApi reqBodyApi server m p "" [(hContentType,ct)] bod
+    let runTest m p ct bod = runReqOnApi reqBodyApi EmptyContext server m p "" [(hContentType,ct)] bod
         goodCT = "application/json;charset=utf-8"
                  -- "application/json"
         badCT  = "application/nonsense"
@@ -446,7 +475,7 @@ reqBodySpec = do
     --   post "/"
     --     [(hContentType, "application/nonsense")] "" `shouldRespondWith` 415
 
-  where server :: Server ReqBodyApi AppHandler
+  where server :: Server ReqBodyApi '[] AppHandler
         server = return :<|> return . age
         -- mkReq handler method x = mkRequest x
         --    [(hContentType, "application/json;charset=utf-8")] ""
@@ -481,14 +510,14 @@ headerSpec = describe "Servant.API.Header" $ do
     -- let delete' x = delete x [("MyHeader", "5")]
 
     it "passes the header to the handler (Int)" $ do
-      runReqOnApi headerApi expectsInt SC.DELETE "/" "" [("MyHeader","5")] "" >>= (`shouldHaveStatus` 200)
+      runReqOnApi headerApi EmptyContext expectsInt SC.DELETE "/" "" [("MyHeader","5")] "" >>= (`shouldHaveStatus` 200)
             --delete' "/" "" `shouldRespondWith` 200
 
     -- with (return (serve headerApi expectsString)) $ do
     --     let delete' x = delete x [("MyHeader", "more from you")]
 
     it "passes the header to the handler (String)" $ do
-      runReqOnApi headerApi expectsString SC.DELETE "/" "" [("MyHeader","more from you")] "" >>= (`shouldHaveStatus` 200)
+      runReqOnApi headerApi EmptyContext expectsString SC.DELETE "/" "" [("MyHeader","more from you")] "" >>= (`shouldHaveStatus` 200)
             -- delete' "/" "" `shouldRespondWith` 200
 
 
@@ -511,7 +540,7 @@ rawSpec = do
   describe "Servant.API.Raw" $ do
 
     it "runs applications" $ do
-      runReqOnApi rawApi (rawServer (const (42 :: Integer))) SC.GET "foo" "" [] "" >>= (`shouldHaveBody` "42")
+      runReqOnApi rawApi EmptyContext (rawServer (const (42 :: Integer))) SC.GET "foo" "" [] "" >>= (`shouldHaveBody` "42")
 
 {-
       (flip runSession) (serve rawApi (rawApplication (const (42 :: Integer)))) $ do
@@ -523,7 +552,7 @@ rawSpec = do
 -}
 
     it "gets the pathInfo modified" $ do
-      runReqOnApi rawApi (rawServer rqPathInfo) SC.GET "foo/bar" "" [] "" >>=
+      runReqOnApi rawApi EmptyContext (rawServer rqPathInfo) SC.GET "foo/bar" "" [] "" >>=
         (`shouldHaveBody` (T.pack (show ("bar" :: B8.ByteString))))
 
 {-
@@ -550,7 +579,7 @@ type AlternativeApi =
 alternativeApi :: Proxy AlternativeApi
 alternativeApi = Proxy
 
-alternativeServer :: Server AlternativeApi AppHandler
+alternativeServer :: Server AlternativeApi '[] AppHandler
 alternativeServer =
        return alice
   :<|> return jerry
@@ -565,12 +594,12 @@ alternativeSpec = do
 
       it "unions endpoints" $ do
         -- response <- get "/foo"
-        response <- runReqOnApi alternativeApi alternativeServer SC.GET "/foo" "" [] ""
+        response <- runReqOnApi alternativeApi EmptyContext alternativeServer SC.GET "/foo" "" [] ""
         response `shouldDecodeTo` alice
         -- liftIO $ do
         --   decodesTo response alice `shouldBe` True
         -- response_ <- get "/bar"
-        response_ <- runReqOnApi alternativeApi alternativeServer SC.GET "/bar" "" [] ""
+        response_ <- runReqOnApi alternativeApi EmptyContext alternativeServer SC.GET "/bar" "" [] ""
         response_ `shouldDecodeTo` jerry
         -- liftIO $ do
         --   decodesTo response_ jerry `shouldBe`
@@ -578,13 +607,13 @@ alternativeSpec = do
 
       it "checks all endpoints before returning 415" $ do
         -- response <- get "/foo"
-        response <- runReqOnApi alternativeApi alternativeServer SC.GET "/foo" "" [] ""
+        response <- runReqOnApi alternativeApi EmptyContext alternativeServer SC.GET "/foo" "" [] ""
         response `shouldHaveStatus` 200
         -- liftIO $ statusIs response 200 `shouldBe` True
 
       it "returns 404 if the path does not exist" $ do
         -- response <- get "/nonexistent"
-        response <- runReqOnApi alternativeApi alternativeServer SC.GET "/nonexistent" "" [] ""
+        response <- runReqOnApi alternativeApi EmptyContext alternativeServer SC.GET "/nonexistent" "" [] ""
         response `shouldHaveStatus` 404
         -- liftIO $ statusIs response 404 `shouldBe` True
 -- }}}
@@ -600,7 +629,7 @@ type ResponseHeadersApi =
 responseHeadersApi :: Proxy ResponseHeadersApi
 responseHeadersApi = Proxy
 
-responseHeadersServer :: Server ResponseHeadersApi AppHandler
+responseHeadersServer :: Server ResponseHeadersApi '[] AppHandler
 responseHeadersServer = let h = return $ addHeader 5 $ addHeader "kilroy" "hi"
   in h :<|> h :<|> h :<|> h
 
@@ -612,7 +641,7 @@ responseHeadersSpec = describe "ResponseHeaders" $ do
 
     it "includes the headers in the response" $
       forM_ methods $ \method -> do
-        req <- runReqOnApi responseHeadersApi responseHeadersServer method "/" "" [] ""
+        req <- runReqOnApi responseHeadersApi EmptyContext responseHeadersServer method "/" "" [] ""
         req `shouldHaveStatus` 200
         req `shouldHaveHeaders` [("H1","5"),("H2","kilroy")]
 
@@ -625,13 +654,13 @@ responseHeadersSpec = describe "ResponseHeaders" $ do
 
     it "responds with not found for non-existent endpoints" $
       forM_ methods $ \method ->
-        runReqOnApi responseHeadersApi responseHeadersServer method "blahblah" "" [] "" >>= (`shouldHaveStatus` 404)
+        runReqOnApi responseHeadersApi EmptyContext responseHeadersServer method "blahblah" "" [] "" >>= (`shouldHaveStatus` 404)
         -- method "blahblah" [] ""
         --  `shouldRespondWith` 404
 
     it "returns 406 if the Accept header is not supported" $
       forM_ methods $ \method ->
-        runReqOnApi responseHeadersApi responseHeadersServer method "" "" [(hAccept, "crazy/mime")] "" >>= (`shouldHaveStatus` 406)
+        runReqOnApi responseHeadersApi EmptyContext responseHeadersServer method "" "" [(hAccept, "crazy/mime")] "" >>= (`shouldHaveStatus` 406)
         -- method "" [(hAccept, "crazy/mime")] ""
         --   `shouldRespondWith` 406
 
@@ -649,7 +678,7 @@ type MiscCombinatorsAPI
 miscApi :: Proxy MiscCombinatorsAPI
 miscApi = Proxy
 
-miscServ :: Server MiscCombinatorsAPI AppHandler
+miscServ :: Server MiscCombinatorsAPI '[] AppHandler
 miscServ = versionHandler
       :<|> secureHandler
       :<|> hostHandler
@@ -674,7 +703,7 @@ miscCombinatorSpec = do
       go "/host" "localhost"
 
   where go path res = do
-          runReqOnApi miscApi miscServ SC.GET path "" [] "" >>=
+          runReqOnApi miscApi EmptyContext miscServ SC.GET path "" [] "" >>=
             (`shouldHaveBody` res)
 
 -- }}}
@@ -702,6 +731,41 @@ fallthroughSpec = do
     it "Successfully falls through" $ expectRoute "2" (`shouldHaveBody` "2")
     it "404s when expected"         $ expectRoute "3" (`shouldHaveStatus` 404)
 
+
+------------------------------------------------------------------------------
+-- * BasicAuthCombinatorSpec {{{
+------------------------------------------------------------------------------
+
+type BasicAuthAPI = "secret" :> BasicAuth "realm" () :> Get '[JSON] Int
+
+baApi :: Proxy BasicAuthAPI
+baApi = Proxy
+
+baServ :: Server BasicAuthAPI '[BasicAuthCheck AppHandler ()] AppHandler
+baServ () = return 1337
+
+basicAuthSpec :: Spec
+basicAuthSpec = do
+  let baCheck :: BasicAuthCheck AppHandler ()
+      baCheck = BasicAuthCheck $ \_ -> return (Authorized ())
+
+      getSecret :: () -> AppHandler Int
+      getSecret () = return 1337
+
+      authHeader un pw = "Basic " <> B64.encode (T.encodeUtf8 un <> ":" <> pw)
+
+  describe "Checks auth" $ do
+    
+    it "returns 403 when not logged  in" $ do
+      response <- runReqOnApi baApi (baCheck :. EmptyContext) getSecret SC.GET "/secret" "" [] ""
+      response `shouldHaveStatus` 401
+
+    it "returns 200 when logged in" $ do
+      response <- runReqOnApi baApi (baCheck :. EmptyContext) getSecret SC.GET "/secret" ""
+                  [("Authorization", authHeader testLogin testPassword)] ""
+      response `shouldHaveBody` "1337"
+
+-- }}}
 ------------------------------------------------------------------------------
 -- * Test data types {{{
 ------------------------------------------------------------------------------
@@ -815,12 +879,14 @@ shouldHaveHeaders (Right resp) hs = do
 -- * Assorted Snap helpers
 ------------------------------------------------------------------------------
 
-mkInitAndServer :: HasServer api
+mkInitAndServer :: (HasServer api context m, m ~ AppHandler)
                 => Proxy (api :: *)
-                -> Server api AppHandler
+                -> Context context
+                -> Server api context AppHandler
                 -> (SnapletInit App App, AppHandler ())
-mkInitAndServer api serv = let sRoute = serveSnap api serv
-                           in  (app' [("", sRoute)], sRoute)
+mkInitAndServer api ctx serv =
+  let sRoute = serveSnapWithContext api ctx serv
+  in  (app' [("", sRoute)], sRoute)
 
 
 mkRequest :: Method
@@ -838,22 +904,23 @@ mkRequest mth pth qs hds bdy = do
   -- req <- State.get -- Useful for debugging
   -- liftIO $ print req
 
-runReqOnApi :: HasServer api
+runReqOnApi :: (HasServer api context m, m ~ AppHandler)
             => Proxy (api :: *)
-            -> Server api AppHandler
+            -> Context context
+            -> Server api context AppHandler
             -> Method
             -> B8.ByteString
             -> B8.ByteString
             -> [Network.HTTP.Types.Header]
             -> B8.ByteString
             -> IO (Either T.Text Response)
-runReqOnApi api serv method route qs hds bod =
-  let (sInit, serv') = mkInitAndServer api serv
+runReqOnApi api ctx serv method route qs hds bod =
+  let (sInit, serv') = mkInitAndServer api ctx serv
   in SST.runHandler Nothing (mkRequest method route qs hds bod) serv' sInit
 
-routes :: HasServer api
+routes :: (HasServer api context m, m ~ AppHandler)
        => Proxy (api :: *)
-       -> Server api AppHandler
+       -> Context context
+       -> Server api context AppHandler
        -> [(B8.ByteString, AppHandler ())]
-routes p s = [("", serveSnap p s)]
-
+routes p ctx s = [("", serveSnapWithContext p ctx s)]
