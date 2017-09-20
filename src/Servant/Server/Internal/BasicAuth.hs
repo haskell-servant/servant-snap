@@ -6,6 +6,9 @@
 
 module Servant.Server.Internal.BasicAuth where
 
+#if __GLASGOW_HASKELL__ < 710
+import           Data.Functor           ((<$>))
+#endif
 import           Control.Monad          (guard)
 import qualified Data.ByteString        as BS
 import           Data.ByteString.Base64 (decodeLenient)
