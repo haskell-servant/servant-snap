@@ -172,9 +172,7 @@ processMethodRouter handleA status method rHeaders request = case handleA of
   Just (contentT, body) -> Route $ responseLBS status hdrs bdy
     where
       bdy = if allowedMethodHead method request then "" else body
-      hdrs = (hContentType, cs contentT)
-             : listHeaders (headers request)
-             <> fromMaybe [] rHeaders
+      hdrs = (hContentType, cs contentT) : fromMaybe [] rHeaders
 
 methodCheck :: MonadSnap m => Method -> Request -> DelayedM m ()
 methodCheck method request

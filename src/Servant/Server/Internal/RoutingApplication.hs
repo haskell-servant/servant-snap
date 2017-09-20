@@ -48,8 +48,39 @@ data RouteResult a =
 
 toApplication :: forall m. MonadSnap m => RoutingApplication m -> Application m
 toApplication ra request respond = do
-  r <- ra request routingRespond
-  respond r
+
+  snapReq  <- getRequest
+  r        <- ra request routingRespond
+  snapResp <- getResponse
+  rspnd <- respond (r `addHeaders` headers snapResp)
+
+  -- liftIO $ putStrLn $ unlines [
+  --   "----------"
+  --   , "SNAP REQ"
+  --   , show snapReq
+  --   , "----------"
+  --   , "request"
+  --   , show request
+  --   , "----------"
+  --   , "r"
+  --   , show r
+  --   , "----------"
+  --   , "snapResp"
+  --   , show snapResp
+  --   , "----------"
+  --   , "rspnd"
+  --   , show rspnd
+  --   ]
+  
+  return rspnd
+
+  -- snapReq  <- getRequest
+  -- r        <- ra (request `addHeaders` headers snapReq) routingRespond
+  -- respond r
+
+  -- r <- ra request routingRespond
+  -- respond r
+
    where
      routingRespond (Fail err) = case errHTTPCode err of
        404 -> pass

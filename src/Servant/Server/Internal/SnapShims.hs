@@ -3,8 +3,9 @@
 module Servant.Server.Internal.SnapShims where
 
 import qualified Data.ByteString.Char8 as B
-import           Network.HTTP.Types (Status(..))
+import           Data.List             (foldl')
 import           Data.IORef
+import           Network.HTTP.Types    (Status(..))
 import           Snap.Core
 
 
@@ -25,6 +26,9 @@ applicationToSnap app = do
   req <- getRequest
   r <- app req return
   putResponse r
+
+addHeaders :: HasHeaders a => a -> Headers -> a
+addHeaders a hs = foldl' (\xs (k,v) -> addHeader k v xs) a (listHeaders hs)
 
 unSnapMethod :: Method -> B.ByteString
 unSnapMethod = B.pack . show

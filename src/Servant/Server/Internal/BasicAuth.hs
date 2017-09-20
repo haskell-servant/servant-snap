@@ -7,7 +7,6 @@
 module Servant.Server.Internal.BasicAuth where
 
 import           Control.Monad          (guard)
-import           Control.Monad.Trans    (liftIO)
 import qualified Data.ByteString        as BS
 import           Data.ByteString.Base64 (decodeLenient)
 import           Data.CaseInsensitive   (CI(..)) 

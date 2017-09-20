@@ -117,6 +117,7 @@ test-suite spec
     , time
     , hspec-snap         >= 1.0.0.2 && < 1.1
     , hspec-core         >= 2.4.3   && < 2.5
+    , snap-cors
     , http-types
     , HUnit              >= 1.4
     , mtl

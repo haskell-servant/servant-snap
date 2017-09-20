@@ -3,7 +3,7 @@
 , directory, either, errors, exceptions, filepath, heist, hspec
 , hspec-core, hspec-snap, http-api-data, http-types, HUnit
 , io-streams, lens, map-syntax, mmorph, mtl, network, network-uri
-, parsec, process, QuickCheck, servant, snap, snap-core
+, parsec, process, QuickCheck, servant, snap, snap-core, snap-cors
 , snap-server, stdenv, string-conversions, temporary, text, time
 , transformers, word8
 }:
@@ -26,9 +26,9 @@ mkDerivation {
   testHaskellDepends = [
     aeson base base64-bytestring bytestring case-insensitive containers
     digestive-functors directory either exceptions hspec hspec-core
-    hspec-snap http-types HUnit mtl network parsec process QuickCheck
-    servant snap snap-core snap-server string-conversions temporary
-    text time transformers
+    hspec-snap http-types HUnit lens mtl network parsec process
+    QuickCheck servant snap snap-core snap-cors snap-server
+    string-conversions temporary text time transformers
   ];
   homepage = "http://haskell-servant.github.io/";
   description = "A family of combinators for defining webservices APIs and serving them";
