@@ -3,6 +3,9 @@
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
+#if __GLASGOW_HASKELL__ < 710
+{-# LANGUAGE OverlappingInstances #-}
+#endif
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Servant.Server.Internal.BasicAuth where
