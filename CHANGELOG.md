@@ -1,3 +1,10 @@
+0.8.0.1
+-------
+
+Add headers from MonadSnap state response to the servant-snap computed response
+Add a commented-out snap-cors test to the test suite. It doesn't pass, although
+manual testing of snap-cors works.
+
 0.8
 -------
 
