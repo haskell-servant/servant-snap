@@ -4,7 +4,7 @@ let
   fixedNixpkgs = nixpkgs.fetchFromGitHub {
          owner = "NixOS";
          repo = "nixpkgs-channels";
-         rev = "c8e7aab0c8bae8a49ec5bd87ace65b237c8e3d18";
+         rev = "ade98dc442ea78e9783d5e26954e64ec4a1b2c94";
          sha256  = "0dq2ymqygc6dadrlm1jcbqsg7w34yihb7gss9yk42lknajzvm9pm";
    };
 in
