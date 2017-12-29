@@ -7,13 +7,15 @@
 {-# LANGUAGE TemplateHaskell   #-}
 
 import           Control.Lens
-import           Data.Aeson
+import           Data.Aeson hiding (defaultOptions)
 import           Data.Map.Syntax ((##))
 import           Data.Monoid
 import           Data.Proxy
 import           Data.Text
 import           GHC.Generics
 import qualified Heist.Interpreted as I
+import           Snap.Core
+import           Snap.CORS
 import           Snap.Snaplet
 import           Snap.Snaplet.Auth
 import           Snap.Snaplet.Session
@@ -113,7 +115,8 @@ initApp = makeSnaplet "myapp" "An example app in servant" Nothing $ do
   h <- nestSnaplet "" heist $ heistInit "templates"
   s <- nestSnaplet "sess" sess $ initCookieSessionManager "site_key.txt" "sess" Nothing (Just 3600)
   a <- nestSnaplet "" auth $ initJsonFileAuthManager defAuthSettings sess "users.json"
-  addRoutes [("api", serveSnap testApi server)]
+  addRoutes [("api", applyCORS defaultOptions $ serveSnap testApi server)
+            ,("",    writeText "Hello")]
   return $ App h s a
 
 

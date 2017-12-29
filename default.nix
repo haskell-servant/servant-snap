@@ -21,7 +21,7 @@ mkDerivation {
   ];
   executableHaskellDepends = [
     aeson base bytestring either errors heist lens map-syntax servant
-    snap snap-core snap-server text transformers
+    snap snap-core snap-cors snap-server text transformers
   ];
   testHaskellDepends = [
     aeson base base64-bytestring bytestring case-insensitive containers

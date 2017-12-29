@@ -768,7 +768,7 @@ basicAuthSpec = do
 
   describe "Checks auth" $ do
     
-    it "returns 403 when not logged  in" $ do
+    it "returns 401 when not logged  in" $ do
       response <- runReqOnApi baApi (baCheck :. EmptyContext) getSecret SC.GET "/secret" "" [] ""
       response `shouldHaveStatus` 401
 
