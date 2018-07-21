@@ -1,1 +1,1 @@
-packages: hspec-snap/*.cabal ./*.cabal hspec-discover*/*.cabal
+packages: deps/*, ./*.cabal

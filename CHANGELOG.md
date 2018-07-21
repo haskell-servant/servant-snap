@@ -1,3 +1,9 @@
+0.8.1
+------
+
+Add `HasServer` instances for `StreamGenerator`
+
+
 0.8.0.1
 -------
 

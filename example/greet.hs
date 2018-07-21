@@ -14,7 +14,7 @@ import           Data.Proxy
 import           Data.Text
 import           GHC.Generics
 import qualified Heist.Interpreted as I
-import           Snap.Core
+import           Snap.Core hiding (GET)
 import           Snap.CORS
 import           Snap.Snaplet
 import           Snap.Snaplet.Auth
@@ -37,7 +37,7 @@ instance FromJSON Greet
 instance ToJSON Greet
 
 -- API specification
-type TestApi m =
+type TestApi m f =
 
   -- GET /hello/:name?capital={true, false}  returns a Greet as JSON
   "hello" :> Capture "name" Text :> QueryParam "capital" Bool :> Get '[JSON] Greet
@@ -51,6 +51,8 @@ type TestApi m =
 
   -- DELETE /greet/:greetid
   :<|> "greet" :> Capture "greetid" Text :> Delete '[JSON] ()
+
+  :<|> "stream" :> StreamGet NetstringFraming JSON (f Greet)
 
   :<|> "files" :> Raw
   :<|> "doraw" :> Raw
@@ -69,7 +71,7 @@ instance HasHeist App where
 
 type AppHandler = Handler App App
 
-testApi :: Proxy (TestApi AppHandler)
+testApi :: Proxy (TestApi AppHandler StreamGenerator)
 testApi = Proxy
 
 
@@ -80,11 +82,12 @@ testApi = Proxy
 --
 -- Each handler runs in the 'AppHandler' monad.
 
-server :: Server (TestApi AppHandler) '[] AppHandler
+server :: Server (TestApi AppHandler StreamGenerator) '[] AppHandler
 server = helloH
     :<|> helloH'
     :<|> postGreetH
     :<|> deleteGreetH
+    :<|> doStream
     :<|> serveDirectory "static"
     :<|> doRaw
 
@@ -103,6 +106,11 @@ server = helloH
         postGreetH greet = return greet
 
         deleteGreetH _ = return ()
+
+        doStream = return $ StreamGenerator $ \sendFirst sendRest -> do
+          sendFirst (Greet "hi")
+          sendRest  (Greet "tao")
+          sendRest  (Greet "Howareya")
 
         doRaw = with auth $ do
           u <- currentUser

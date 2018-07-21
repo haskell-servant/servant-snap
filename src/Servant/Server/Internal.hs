@@ -8,6 +8,7 @@
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE TupleSections              #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
@@ -27,10 +28,14 @@ module Servant.Server.Internal
 -------------------------------------------------------------------------------
 import           Control.Applicative         ((<$>))
 import           Control.Monad.Trans.Class   (lift)
+import           Control.Monad               (when)
 import           Data.Bool                   (bool)
+import qualified Data.ByteString.Builder     as BB
+import qualified Data.ByteString.Builder.Extra as BB
 import qualified Data.ByteString.Char8       as B
 import qualified Data.ByteString.Lazy        as BL
-import           Data.Maybe                  (fromMaybe, mapMaybe)
+import           Data.Maybe                  (fromMaybe, isNothing, mapMaybe,
+                                              maybeToList)
 import           Data.Proxy
 import           Data.String                 (fromString)
 import           Data.String.Conversions     (cs, (<>))
@@ -42,6 +47,7 @@ import           Network.HTTP.Types          (HeaderName, Method,
                                               Status(..), parseQueryText,
                                               methodGet, methodHead,
                                               hContentType, hAccept)
+import qualified Network.HTTP.Media          as NHM
 import           Web.HttpApiData             (FromHttpApiData,
                                               parseHeaderMaybe,
                                               parseQueryParamMaybe,
@@ -51,18 +57,23 @@ import           Snap.Core                   hiding (Headers, Method,
                                               getResponse, route,
                                               method, withRequest)
 import           Servant.API                 ((:<|>) (..), (:>), BasicAuth,
+                                              BoundaryStrategy(..),
                                               Capture,
-                                              CaptureAll, Header,
-                                              IsSecure(..), QueryFlag,
+                                              CaptureAll, FramingRender (..),
+                                              Header, IsSecure(..), QueryFlag,
                                               QueryParam, QueryParams, Raw,
                                               RemoteHost, ReqBody,
-                                              ReflectMethod(..), Verb)
+                                              ReflectMethod(..), Stream,
+                                              ToStreamGenerator (..), Verb,
+                                              getStreamGenerator)
 import           Servant.API.ContentTypes    (AcceptHeader (..),
                                               AllCTRender (..),
-                                              AllCTUnrender (..), AllMime(..), canHandleAcceptH)
+                                              AllCTUnrender (..), AllMime(..),
+                                              MimeRender (..),
+                                              canHandleAcceptH, contentType)
 import           Servant.API.ResponseHeaders (Headers, getResponse, GetHeaders,
                                               getHeaders)
--- import           Servant.Common.Text         (FromText, fromText)
+import qualified System.IO.Streams           as IOS
 
 import           Servant.Server.Internal.BasicAuth
 import           Servant.Server.Internal.Context
@@ -72,7 +83,7 @@ import           Servant.Server.Internal.RoutingApplication
 import           Servant.Server.Internal.ServantErr
 import           Servant.Server.Internal.SnapShims
 
--- TODO: add MonadSnap m => m ?
+
 class HasServer api context (m :: * -> *) where
   type ServerT api context m :: *
 
@@ -501,3 +512,73 @@ instance (HasServer api context m,
 
 ct_wildcard :: B.ByteString
 ct_wildcard = "*" <> "/" <> "*" -- Because CPP
+
+instance ( MimeRender ctype a, ReflectMethod method, MimeRender ctype a, -- ToStreamGenerator m (f a),
+           FramingRender framing ctype, ToStreamGenerator f a
+         ) => HasServer (Stream method framing ctype (f a)) context m where
+  type ServerT (Stream method framing ctype (f a)) context m = m (f a)
+
+  route Proxy _ action = streamRouter ([],) method (Proxy) (Proxy :: Proxy framing) (Proxy :: Proxy ctype) action
+    where method = reflectMethod (Proxy :: Proxy method)
+          -- status = toEnum . fromInteger $ natVal (Proxy :: Proxy status)
+
+instance ( MimeRender ctype a, ReflectMethod method, MimeRender ctype (f a), ToStreamGenerator m (f a),
+           FramingRender framing ctype, ToStreamGenerator f a, GetHeaders (Headers h (f a))
+         ) => HasServer (Stream method framing ctype (Headers h (f a))) context m where
+  type ServerT (Stream method framing ctype (Headers h (f a))) context m = m (Headers h (f a))
+
+  route Proxy _ action =
+    streamRouter (\x -> (getHeaders x, getResponse x))
+                 method
+                 Proxy
+                 (Proxy :: Proxy framing)
+                 (Proxy :: Proxy ctype)
+                 action
+    where method = reflectMethod (Proxy :: Proxy method)
+
+
+streamRouter :: (MimeRender ctype a,
+                 FramingRender framing ctype,
+                 ToStreamGenerator f a,
+                 MonadSnap m
+                ) =>
+                (b -> ([(HeaderName, B.ByteString)], f a))
+             -> Method
+             -> Proxy m
+             -> Proxy framing
+             -> Proxy ctype
+             -> Delayed m env (m b)
+             -> Router m env
+streamRouter splitHeaders method handlerProxy framingproxy ctypeproxy action = leafRouter $ \env request respond ->
+          let accH    = fromMaybe ct_wildcard $ getHeader hAccept request
+              cmediatype = NHM.matchAccept [contentType ctypeproxy] accH
+              accCheck = when (isNothing cmediatype) $ delayedFail err406
+              contentHeader = (hContentType, NHM.renderHeader . maybeToList $ cmediatype)
+          in runAction (action `addMethodCheck` methodCheck method request
+                               `addAcceptCheck` accCheck
+                       ) env request respond $ \ output ->
+                let (headers, fa) = splitHeaders output
+                    k = getStreamGenerator . toStreamGenerator $ fa in
+                Route $ flip setResponseBody emptyResponse $ \outStream -> do
+                      let writeAndFlush bb = IOS.write (Just $ bb <> BB.flush) outStream
+                      writeAndFlush (BB.lazyByteString $ header framingproxy ctypeproxy)
+                      case boundary framingproxy ctypeproxy of
+                           BoundaryStrategyBracket f ->
+                                    let go x = let bs = mimeRender ctypeproxy x
+                                                   (before, after) = f bs
+                                               in writeAndFlush (   BB.lazyByteString before
+                                                                 <> BB.lazyByteString bs
+                                                                 <> BB.lazyByteString after)
+                                    in k go go
+                           BoundaryStrategyIntersperse sep -> k
+                             (\x -> do
+                                writeAndFlush . BB.lazyByteString $ mimeRender ctypeproxy x
+                             )
+                             (\x -> do
+                                writeAndFlush . (BB.lazyByteString sep <>) . BB.lazyByteString $ mimeRender ctypeproxy x
+                             )
+                           BoundaryStrategyGeneral f ->
+                                    let go = writeAndFlush . BB.lazyByteString . f . mimeRender ctypeproxy
+                                    in  k go go
+                      IOS.write (Just . BB.lazyByteString $ trailer framingproxy ctypeproxy) outStream
+                      return outStream
