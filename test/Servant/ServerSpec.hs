@@ -54,9 +54,9 @@ import           Servant.API                ((:<|>) (..), (:>),
                                              addHeader, BasicAuth, Capture,
                                              CaptureAll, Header (..), Headers,
                                              IsSecure(..), JSON, NoContent(..),
-                                             PlainText, QueryFlag, QueryParam,
-                                             QueryParams, Raw, RemoteHost,
-                                             ReqBody)
+                                             NoFraming, OctetStream, PlainText, QueryFlag,
+                                             QueryParam, QueryParams, Raw,
+                                             RemoteHost, ReqBody, SourceIO, Stream)
 import           Servant.API.Verbs          (Verb, Get, Post, Put, Delete,
                                              Patch)
 import qualified Servant.API.Verbs          as V
@@ -64,6 +64,7 @@ import           Servant.Server              hiding (route)
 import           Servant.Server.Internal     (HasServer)
 import           Servant.Server.Internal.BasicAuth
 import           Servant.Server.Internal.Context
+import qualified Servant.Types.SourceT as S
 import           Snap.Snaplet.Auth
 import           Snap.Snaplet.Auth.Backends.JsonFile
 import qualified Snap.Util.CORS as CORS
@@ -132,6 +133,7 @@ type VerbApi method status
  :<|> "accept"    :> (    Verb method status '[JSON] Person
                      :<|> Verb method status '[PlainText] String
                      )
+ :<|> "stream"    :> Stream method status NoFraming OctetStream (SourceIO B8.ByteString)
 
 
 verbSpec :: Spec
@@ -142,6 +144,7 @@ verbSpec = do
           :<|> return (addHeader 5 alice)
           :<|> return (addHeader 10 NoContent)
           :<|> (return alice :<|> return "B")
+          :<|> return (S.source ["bytestring"])
       get200     = Proxy :: Proxy (VerbApi 'V.GET 200)
       post210    = Proxy :: Proxy (VerbApi 'V.POST 210)
       put203     = Proxy :: Proxy (VerbApi 'V.PUT 203)
@@ -226,6 +229,13 @@ verbSpec = do
                     (serveSnap api server) sInit
             resp `shouldHaveStatus` status
             resp `shouldHaveBody` "B"
+
+        unless (method == SC.HEAD) $ it "works for Stream as for Result" $ do
+          resp <- SST.runHandler Nothing
+                                 (mkRequest method "/stream" "" [] "")
+                                 (serveSnap api server) sInit
+          resp `shouldHaveStatus` status
+          resp `shouldHaveBody`   "bytestring"
 
   test "GET 200" get200 (routes get200 EmptyContext server) SC.GET 200
   test "POST 210" post210 (routes post210 EmptyContext server) SC.POST 210

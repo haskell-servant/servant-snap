@@ -10,10 +10,12 @@
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE TypeApplications           #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE UndecidableInstances       #-}
 
 #if __GLASGOW_HASKELL__ < 710
 {-# LANGUAGE OverlappingInstances #-}
@@ -65,18 +67,15 @@ import           Snap.Core                   hiding (Headers, Method,
                                               getResponse, route,
                                               method, withRequest)
 import           Servant.API                 ((:<|>) (..), (:>), BasicAuth,
-                                              BoundaryStrategy(..),
-                                              Capture', CaptureAll,
-                                              Description, EmptyAPI,
-                                              FramingRender (..),
-                                              Header', If, IsSecure(..),
-                                              QueryFlag, QueryParam',
-                                              QueryParams, Raw, RemoteHost,
-                                              ReqBody', ReflectMethod(..),
-                                              SBool(..), SBoolI,
-                                              Stream, Summary,
-                                              ToStreamGenerator (..), Vault,
-                                              Verb, getStreamGenerator, sbool)
+                                              Capture',
+                                              CaptureAll, Description, FramingRender (..), EmptyAPI
+                                              Header', IsSecure(..), If, QueryFlag, IsSecure(..),
+                                              QueryParam', QueryParams, Raw,
+                                              RemoteHost, ReqBody',
+                                              ReflectMethod(..), SBool(..), SBoolI, Stream, Summary,
+                                              Verb, sbool
+                                             )
+import         Servant.API.Stream            (ToSourceIO(..))
 import           Servant.API.ContentTypes    (AcceptHeader (..),
                                               AllCTRender (..),
                                               AllCTUnrender (..), AllMime(..),
@@ -86,6 +85,7 @@ import           Servant.API.Modifiers       (FoldLenient, FoldRequired,
                                               RequestArgument, unfoldRequestArgument)
 import           Servant.API.ResponseHeaders (Headers, getResponse, GetHeaders,
                                               getHeaders)
+import qualified Servant.Types.SourceT       as S
 import qualified System.IO.Streams           as IOS
 
 import           Servant.Server.Internal.BasicAuth
@@ -289,34 +289,34 @@ instance {-# OVERLAPPABLE #-} (AllCTRender ctypes a,
 
 
 
-instance {-# OVERLAPPABLE #-} (MimeRender ctype a,
-                               ReflectMethod method,
-                               KnownNat status,
-                               FramingRender framing ctype,
-                               ToStreamGenerator b a)
-  => HasServer (Stream method status framing ctype b) context m where
-  type ServerT (Stream method status framing ctype b) context m = m b
-  hoistServerWithContext _ _ nt s = nt s
+-- instance {-# OVERLAPPABLE #-} (MimeRender ctype a,
+--                                ReflectMethod method,
+--                                KnownNat status,
+--                                FramingRender framing ctype,
+--                                ToStreamGenerator b a)
+--   => HasServer (Stream method status framing ctype b) context m where
+--   type ServerT (Stream method status framing ctype b) context m = m b
+--   hoistServerWithContext _ _ nt s = nt s
 
-  route Proxy _ = streamRouter ([],) method status (Proxy :: Proxy framing) (Proxy :: Proxy ctype)
-    where method = reflectMethod (Proxy :: Proxy method)
-          status = toEnum . fromInteger $ natVal (Proxy :: Proxy status)
+--   route Proxy _ = streamRouter ([],) method status (Proxy :: Proxy framing) (Proxy :: Proxy ctype)
+--     where method = reflectMethod (Proxy :: Proxy method)
+--           status = toEnum . fromInteger $ natVal (Proxy :: Proxy status)
 
 
-instance {-# OVERLAPPABLE #-} (MimeRender ctype a,
-                               ReflectMethod method,
-                               KnownNat status,
-                               FramingRender framing ctype,
-                               ToStreamGenerator b a,
-                               GetHeaders (Headers h b))
-  => HasServer (Stream method status framing ctype (Headers h b)) context m where
+-- instance {-# OVERLAPPABLE #-} (MimeRender ctype a,
+--                                ReflectMethod method,
+--                                KnownNat status,
+--                                FramingRender framing ctype,
+--                                ToStreamGenerator b a,
+--                                GetHeaders (Headers h b))
+--   => HasServer (Stream method status framing ctype (Headers h b)) context m where
 
-  type ServerT (Stream method status framing ctype (Headers h b)) context m = m (Headers h b)
-  hoistServerWithContext _ _ nt s = nt s
+--   type ServerT (Stream method status framing ctype (Headers h b)) context m = m (Headers h b)
+--   hoistServerWithContext _ _ nt s = nt s
 
-  route Proxy _ = streamRouter (\x -> (getHeaders x, getResponse x)) method status (Proxy :: Proxy framing) (Proxy :: Proxy ctype)
-    where method = reflectMethod (Proxy :: Proxy method)
-          status = toEnum . fromInteger $ natVal (Proxy :: Proxy status)
+--   route Proxy _ = streamRouter (\x -> (getHeaders x, getResponse x)) method status (Proxy :: Proxy framing) (Proxy :: Proxy ctype)
+--     where method = reflectMethod (Proxy :: Proxy method)
+--           status = toEnum . fromInteger $ natVal (Proxy :: Proxy status)
 
 streamRouter :: (MimeRender ctype a,
                  FramingRender framing ctype,
@@ -726,36 +726,6 @@ instance ( KnownSymbol realm
 
   hoistServerWithContext _ pc nt s = hoistServerWithContext (Proxy :: Proxy api) pc nt . s
 
--- * helpers
---
-ct_wildcard :: B.ByteString
-ct_wildcard = "*" <> "/" <> "*" -- Because CPP
-{-
-
-instance ( MimeRender ctype a, ReflectMethod method, MimeRender ctype a, -- ToStreamGenerator m (f a),
-           FramingRender framing ctype -- , ToStreamGenerator f a
-         ) => HasServer (Stream method status framing ctype (f a)) context m where
-  type ServerT (Stream method status framing ctype (f a)) context m = m (f a)
-
-  route Proxy _ action = streamRouter ([],) method (Proxy) (Proxy :: Proxy framing) (Proxy :: Proxy ctype) action
-    where method = reflectMethod (Proxy :: Proxy method)
-          -- status = toEnum . fromInteger $ natVal (Proxy :: Proxy status)
-
-instance ( MimeRender ctype a, ReflectMethod method, MimeRender ctype (f a), -- ToStreamGenerator m (f a),
-           FramingRender framing ctype, {- ToStreamGenerator f a, -} GetHeaders (Headers h (f a))
-         ) => HasServer (Stream method status framing ctype (Headers h (f a))) context m where
-  type ServerT (Stream method status framing ctype (Headers h (f a))) context m = m (Headers h (f a))
-
-  route Proxy _ action =
-    streamRouter (\x -> (getHeaders x, getResponse x))
-                 method
-                 Proxy
-                 (Proxy :: Proxy framing)
-                 (Proxy :: Proxy ctype)
-                 action
-    where method = reflectMethod (Proxy :: Proxy method)
-
-
 
 -- newtype BasicAuthCheck m usr =
 --   BasicAuthCheck { unBasicAuthCheck :: BasicAuthData -> m (BasicAuthResult usr) }
@@ -763,4 +733,84 @@ instance ( MimeRender ctype a, ReflectMethod method, MimeRender ctype (f a), -- 
 
 data BasicAuthResult usr = Unauthorized | BadPassword | NoSuchUser | Authorized usr
   deriving (Functor, Eq, Read, Show, Generic)
--}
+
+-- * helpers
+--
+ct_wildcard :: B.ByteString
+ct_wildcard = "*" <> "/" <> "*" -- Because CPP
+
+instance forall ctype chunk method status framing m context a.
+         ( MimeRender ctype chunk, ReflectMethod method, KnownNat status,
+           FramingRender framing, MonadSnap m, ToSourceIO chunk a
+         ) => HasServer (Stream method status framing ctype a) context m where
+  type ServerT (Stream method status framing ctype a) context m = m a
+
+  route Proxy _ action = streamRouter ([],) method status
+                                      (Proxy :: Proxy framing)
+                                      (Proxy :: Proxy ctype) action
+    where method = reflectMethod (Proxy :: Proxy method)
+          status = toEnum . fromInteger $ natVal (Proxy :: Proxy status)
+
+instance ( MimeRender ctype chunk, ReflectMethod method, MimeRender ctype a, KnownNat status, MonadSnap m,
+           FramingRender framing, ToSourceIO chunk a, GetHeaders (Headers h a)
+         ) => HasServer (Stream method status framing ctype (Headers h a)) context m where
+  type ServerT (Stream method status framing ctype (Headers h a)) context m = m (Headers h a)
+
+  route Proxy _ action =
+    streamRouter (\x -> (getHeaders x, getResponse x))
+                 method
+                 status
+                 (Proxy :: Proxy framing)
+                 (Proxy :: Proxy ctype)
+                 action
+    where method = reflectMethod (Proxy :: Proxy method)
+          status = toEnum . fromInteger $ natVal (Proxy :: Proxy status)
+
+
+
+streamRouter :: forall ctype a c chunk env framing m
+               .(MimeRender ctype chunk,
+                 FramingRender framing,
+                 -- ToSourceIO chunk (m a),
+                 ToSourceIO chunk a,
+                 MonadSnap m
+                ) =>
+                (c -> ([(HeaderName, B.ByteString)], a))
+             -> Method
+             -> Status
+             -> Proxy framing
+             -> Proxy ctype
+             -> Delayed m env (m c)
+             -> Router m env
+streamRouter splitHeaders method status framingproxy ctypeproxy action =
+  leafRouter $ \env request respond ->
+    let accH    = fromMaybe ct_wildcard $ getHeader hAccept request
+        cmediatype = NHM.matchAccept [contentType ctypeproxy] accH
+        accCheck = when (isNothing cmediatype) $ delayedFail err406
+        contentHeader = (hContentType, NHM.renderHeader . maybeToList $ cmediatype)
+    in runAction (action `addMethodCheck` methodCheck method request
+                         `addAcceptCheck` accCheck
+                 ) env request respond $ \ output ->
+          let (headers', fa) = splitHeaders output
+              sourceT = toSourceIO fa
+              S.SourceT kStepLBS =
+                framingRender framingproxy
+                              (mimeRender ctypeproxy :: chunk -> BL.ByteString)
+                              sourceT
+              response = setResponseStatus (statusCode status) (statusMessage status)
+                         $ setHeaders (contentHeader:headers') emptyResponse
+          in
+          Route $ flip setResponseBody response $ \outStream -> do
+            let
+                writeAndFlush bb = IOS.write (Just $ bb <> BB.flush) outStream
+                justFlush = IOS.write (Just BB.flush) outStream
+                loop :: S.StepT IO BL.ByteString -> IO (IOS.OutputStream BB.Builder)
+                loop S.Stop = justFlush >> return outStream
+                loop (S.Error err) = fail err -- TODO: Provide a better error message
+                loop (S.Skip s)    = loop s
+                loop (S.Effect ms) = ms >>= loop
+                loop (S.Yield lbs s) = do
+                  writeAndFlush (BB.lazyByteString lbs)
+                  loop s
+
+            kStepLBS loop

@@ -4,8 +4,8 @@ let
   fixedNixpkgs = nixpkgs.fetchFromGitHub {
          owner = "NixOS";
          repo = "nixpkgs-channels";
-         rev = "b96cd4134a8ae2fd8d37a60acc6e4921191e2818";
-         sha256  = "15vz6q0fy2xrpk1jwhdy2v7abg388sjqyjznr643gn2xg6k1nha2";
+         rev = "bc94dcf500286495e3c478a9f9322debc94c4304";
+         sha256  = "1siqklf863181fqk19d0x5cd0xzxf1w0zh08lv0l0dmjc8xic64a";
    };
 in
   import fixedNixpkgs { inherit overlays; }

@@ -25,7 +25,9 @@ import           Snap.Snaplet.Heist
 import           Snap.Http.Server (defaultConfig)
 
 import           Servant.API
+import qualified Servant.API.Stream as Stream
 import           Servant (serveSnap, Server, serveDirectory)
+import qualified Servant.Types.SourceT as S
 
 -- * Example
 
@@ -37,7 +39,7 @@ instance FromJSON Greet
 instance ToJSON Greet
 
 -- API specification
-type TestApi m f =
+type TestApi =
 
   -- GET /hello/:name?capital={true, false}  returns a Greet as JSON
   "hello" :> Capture "name" Text :> QueryParam "capital" Bool :> Get '[JSON] Greet
@@ -52,7 +54,7 @@ type TestApi m f =
   -- DELETE /greet/:greetid
   :<|> "greet" :> Capture "greetid" Text :> Delete '[JSON] ()
 
-  :<|> "stream" :> StreamGet NetstringFraming JSON (f Greet)
+  :<|> "stream" :> StreamGet NetstringFraming JSON (Stream.SourceIO Greet)
 
   :<|> "files" :> Raw
   :<|> "doraw" :> Raw
@@ -71,7 +73,7 @@ instance HasHeist App where
 
 type AppHandler = Handler App App
 
-testApi :: Proxy (TestApi AppHandler StreamGenerator)
+testApi :: Proxy TestApi
 testApi = Proxy
 
 
@@ -82,7 +84,7 @@ testApi = Proxy
 --
 -- Each handler runs in the 'AppHandler' monad.
 
-server :: Server (TestApi AppHandler StreamGenerator) '[] AppHandler
+server :: Server TestApi '[] AppHandler
 server = helloH
     :<|> helloH'
     :<|> postGreetH
@@ -107,10 +109,8 @@ server = helloH
 
         deleteGreetH _ = return ()
 
-        doStream = return $ StreamGenerator $ \sendFirst sendRest -> do
-          sendFirst (Greet "hi")
-          sendRest  (Greet "tao")
-          sendRest  (Greet "Howareya")
+        doStream :: Handler App App (Stream.SourceIO Greet)
+        doStream = return $ S.source [Greet "Hi", Greet "Tao", Greet "Howareya"]
 
         doRaw = with auth $ do
           u <- currentUser

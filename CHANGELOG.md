@@ -1,3 +1,10 @@
+0.8.4
+-----
+
+Support servant 0.15 and 0.16, which have a new `Stream` combinator
+Drop support for servant < 0.15
+
+
 0.8.3
 -----
 
