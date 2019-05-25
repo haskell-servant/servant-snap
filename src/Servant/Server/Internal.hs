@@ -7,10 +7,12 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TupleSections              #-}
 {-# LANGUAGE TypeFamilies               #-}
 {-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE UndecidableInstances       #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 
 #if __GLASGOW_HASKELL__ < 710
@@ -27,19 +29,25 @@ module Servant.Server.Internal
 
 -------------------------------------------------------------------------------
 import           Control.Applicative         ((<$>))
+import           Control.Monad.Trans         (liftIO)
 import           Control.Monad.Trans.Class   (lift)
-import           Control.Monad               (when)
+import           Control.Monad               (join, when)
 import           Data.Bool                   (bool)
 import qualified Data.ByteString.Builder     as BB
 import qualified Data.ByteString.Builder.Extra as BB
 import qualified Data.ByteString.Char8       as B
 import qualified Data.ByteString.Lazy        as BL
+import           Data.Either                 (partitionEithers)
+import           Data.List                   (foldl')
 import           Data.Maybe                  (fromMaybe, isNothing, mapMaybe,
                                               maybeToList)
 import           Data.Proxy
-import           Data.String                 (fromString)
+import           Data.String                 (IsString, fromString)
 import           Data.String.Conversions     (cs, (<>))
+import           Data.Tagged                 (Tagged(..), retag)
+import qualified Data.Text                   as T
 import           Data.Text                   (Text)
+import           Data.Typeable               (Typeable)
 import           GHC.Generics
 import           GHC.TypeLits                (KnownNat, KnownSymbol, natVal,
                                               symbolVal)
@@ -49,8 +57,8 @@ import           Network.HTTP.Types          (HeaderName, Method,
                                               hContentType, hAccept)
 import qualified Network.HTTP.Media          as NHM
 import           Web.HttpApiData             (FromHttpApiData,
-                                              parseHeaderMaybe,
-                                              parseQueryParamMaybe,
+                                              parseHeader,
+                                              parseQueryParam,
                                               parseUrlPieceMaybe,
                                               parseUrlPieces)
 import           Snap.Core                   hiding (Headers, Method,
@@ -58,19 +66,24 @@ import           Snap.Core                   hiding (Headers, Method,
                                               method, withRequest)
 import           Servant.API                 ((:<|>) (..), (:>), BasicAuth,
                                               BoundaryStrategy(..),
-                                              Capture,
-                                              CaptureAll, FramingRender (..),
-                                              Header, IsSecure(..), QueryFlag,
-                                              QueryParam, QueryParams, Raw,
-                                              RemoteHost, ReqBody,
-                                              ReflectMethod(..), Stream,
-                                              ToStreamGenerator (..), Verb,
-                                              getStreamGenerator)
+                                              Capture', CaptureAll,
+                                              Description, EmptyAPI,
+                                              FramingRender (..),
+                                              Header', If, IsSecure(..),
+                                              QueryFlag, QueryParam',
+                                              QueryParams, Raw, RemoteHost,
+                                              ReqBody', ReflectMethod(..),
+                                              SBool(..), SBoolI,
+                                              Stream, Summary,
+                                              ToStreamGenerator (..), Vault,
+                                              Verb, getStreamGenerator, sbool)
 import           Servant.API.ContentTypes    (AcceptHeader (..),
                                               AllCTRender (..),
                                               AllCTUnrender (..), AllMime(..),
                                               MimeRender (..),
                                               canHandleAcceptH, contentType)
+import           Servant.API.Modifiers       (FoldLenient, FoldRequired,
+                                              RequestArgument, unfoldRequestArgument)
 import           Servant.API.ResponseHeaders (Headers, getResponse, GetHeaders,
                                               getHeaders)
 import qualified System.IO.Streams           as IOS
@@ -92,6 +105,13 @@ class HasServer api context (m :: * -> *) where
         -> Context context
         -> Delayed m env (Server api context m)
         -> Router m env
+
+  hoistServerWithContext
+      :: proxy api
+      -> proxy' context
+      -> (forall x. m x -> n x)
+      -> ServerT api context m
+      -> ServerT api context n
 
 type Server api context m = ServerT api context m
 
@@ -117,7 +137,11 @@ instance (HasServer a ctx m, HasServer b ctx m) => HasServer (a :<|> b) ctx m wh
     where pa = Proxy :: Proxy a
           pb = Proxy :: Proxy b
 
-captured :: FromHttpApiData a => proxy (Capture sym a) -> Text -> Maybe a
+  hoistServerWithContext _ pc nt (a :<|> b) =
+    hoistServerWithContext (Proxy :: Proxy a) pc nt a :<|>
+    hoistServerWithContext (Proxy :: Proxy b) pc nt b
+
+captured :: FromHttpApiData a => proxy (Capture' mods sym a) -> Text -> Maybe a
 captured _ = parseUrlPieceMaybe
 
 -- | If you use 'Capture' in one of the endpoints for your API,
@@ -127,7 +151,7 @@ captured _ = parseUrlPieceMaybe
 -- it into a value of the type you specify.
 --
 -- You can control how it'll be converted from 'Text' to your type
--- by simply providing an instance of 'FromText' for your type.
+-- by simply providing an instance of 'FromHttpApiData' for your type.
 --
 -- Example:
 --
@@ -137,30 +161,33 @@ captured _ = parseUrlPieceMaybe
 -- > server = getBook
 -- >   where getBook :: Text -> EitherT ServantErr IO Book
 -- >         getBook isbn = ...
-instance (FromHttpApiData a, HasServer sublayout context m)
-      => HasServer (Capture capture a :> sublayout) context m where
+instance (FromHttpApiData a, HasServer api context m)
+      => HasServer (Capture' mods capture a :> api) context m where
 
-  type ServerT (Capture capture a :> sublayout) context m =
-     a -> ServerT sublayout context m
+  type ServerT (Capture' mods capture a :> api) context m =
+     a -> ServerT api context m
+
+  hoistServerWithContext _ pc nt s = hoistServerWithContext (Proxy :: Proxy api) pc nt . s
 
   route Proxy ctx d =
     CaptureRouter $
-      route (Proxy :: Proxy sublayout) ctx
+      route (Proxy :: Proxy api) ctx
         (addCapture d $ \ txt -> case parseUrlPieceMaybe txt of
                                    Nothing -> delayedFail err400
                                    Just v  -> return v
         )
 
+instance (FromHttpApiData a, HasServer api context m)
+      => HasServer (CaptureAll capture a :> api) context m where
 
-instance (FromHttpApiData a, HasServer sublayout context m)
-      => HasServer (CaptureAll capture a :> sublayout) context m where
+  type ServerT (CaptureAll capture a :> api) context m =
+    [a] -> ServerT api context m
 
-  type ServerT (CaptureAll capture a :> sublayout) context m =
-    [a] -> ServerT sublayout context m
+  hoistServerWithContext _ pc nt s = hoistServerWithContext (Proxy :: Proxy api) pc nt . s
 
   route Proxy ctx d =
     CaptureAllRouter $
-        route (Proxy :: Proxy sublayout) ctx
+        route (Proxy :: Proxy api) ctx
               (addCapture d $ \ txts -> case parseUrlPieces txts of
                  Left _  -> delayedFail err400
                  Right v -> return v
@@ -240,9 +267,12 @@ instance {-# OVERLAPPABLE #-} (AllCTRender ctypes a,
                                KnownNat status)
   => HasServer (Verb method status ctypes a) context m where
   type ServerT (Verb method status ctypes  a) context m = m a
+  hoistServerWithContext _ _ nt s = nt s
+
   route Proxy _ = methodRouter method (Proxy :: Proxy ctypes) status
     where method = reflectMethod (Proxy :: Proxy method)
           status = toEnum . fromInteger $ natVal (Proxy :: Proxy status)
+
 
 instance {-# OVERLAPPABLE #-} (AllCTRender ctypes a,
                                ReflectMethod method,
@@ -251,10 +281,90 @@ instance {-# OVERLAPPABLE #-} (AllCTRender ctypes a,
   => HasServer (Verb method status ctypes (Headers h a)) context m where
 
   type ServerT (Verb method status ctypes (Headers h a)) context m = m (Headers h a)
+  hoistServerWithContext _ _ nt s = nt s
+
   route Proxy _ = methodRouterHeaders method (Proxy :: Proxy ctypes) status
     where method = reflectMethod (Proxy :: Proxy method)
           status = toEnum . fromInteger $ natVal (Proxy :: Proxy status)
 
+
+
+instance {-# OVERLAPPABLE #-} (MimeRender ctype a,
+                               ReflectMethod method,
+                               KnownNat status,
+                               FramingRender framing ctype,
+                               ToStreamGenerator b a)
+  => HasServer (Stream method status framing ctype b) context m where
+  type ServerT (Stream method status framing ctype b) context m = m b
+  hoistServerWithContext _ _ nt s = nt s
+
+  route Proxy _ = streamRouter ([],) method status (Proxy :: Proxy framing) (Proxy :: Proxy ctype)
+    where method = reflectMethod (Proxy :: Proxy method)
+          status = toEnum . fromInteger $ natVal (Proxy :: Proxy status)
+
+
+instance {-# OVERLAPPABLE #-} (MimeRender ctype a,
+                               ReflectMethod method,
+                               KnownNat status,
+                               FramingRender framing ctype,
+                               ToStreamGenerator b a,
+                               GetHeaders (Headers h b))
+  => HasServer (Stream method status framing ctype (Headers h b)) context m where
+
+  type ServerT (Stream method status framing ctype (Headers h b)) context m = m (Headers h b)
+  hoistServerWithContext _ _ nt s = nt s
+
+  route Proxy _ = streamRouter (\x -> (getHeaders x, getResponse x)) method status (Proxy :: Proxy framing) (Proxy :: Proxy ctype)
+    where method = reflectMethod (Proxy :: Proxy method)
+          status = toEnum . fromInteger $ natVal (Proxy :: Proxy status)
+
+streamRouter :: (MimeRender ctype a,
+                 FramingRender framing ctype,
+                 ToStreamGenerator b a,
+                 MonadSnap m
+                ) =>
+                (c -> ([(HeaderName, B.ByteString)], b))
+             -> Method
+             -> Status
+             -> Proxy framing
+             -> Proxy ctype
+             -> Delayed m env (m c)
+             -> Router m env
+streamRouter splitHeaders method (Status code msg) framingproxy ctypeproxy action = leafRouter $ \env request respond ->
+          let accH    = fromMaybe ct_wildcard $ getHeader hAccept request
+              cmediatype = NHM.matchAccept [contentType ctypeproxy] accH
+              accCheck = when (isNothing cmediatype) $ delayedFail err406
+              contentHeader = (hContentType, NHM.renderHeader . maybeToList $ cmediatype)
+          in runAction (action `addMethodCheck` methodCheck method request
+                               `addAcceptCheck` accCheck
+                       ) env request respond $ \ output ->
+                let (headerz, fa) = splitHeaders output
+                    k = getStreamGenerator . toStreamGenerator $ fa in
+                Route $ setResponseStatus code msg
+                      $ (\r -> foldl' (\r' (h,h') -> addHeader h h' r') r $ contentHeader : headerz)
+                      $ flip setResponseBody emptyResponse $ \outStream -> do
+                        let writeAndFlush bb = IOS.write (Just $ bb <> BB.flush) outStream
+                        writeAndFlush (BB.lazyByteString $ header framingproxy ctypeproxy)
+                        case boundary framingproxy ctypeproxy of
+                             BoundaryStrategyBracket f ->
+                                      let go x = let bs = mimeRender ctypeproxy x
+                                                     (before, after) = f bs
+                                                 in writeAndFlush (   BB.lazyByteString before
+                                                                   <> BB.lazyByteString bs
+                                                                   <> BB.lazyByteString after)
+                                      in k go go
+                             BoundaryStrategyIntersperse sep -> k
+                               (\x -> do
+                                  writeAndFlush . BB.lazyByteString $ mimeRender ctypeproxy x
+                               )
+                               (\x -> do
+                                  writeAndFlush . (BB.lazyByteString sep <>) . BB.lazyByteString $ mimeRender ctypeproxy x
+                               )
+                             BoundaryStrategyGeneral f ->
+                                      let go = writeAndFlush . BB.lazyByteString . f . mimeRender ctypeproxy
+                                      in  k go go
+                        IOS.write (Just . BB.lazyByteString $ trailer framingproxy ctypeproxy) outStream
+                        return outStream
 
 
 -- | If you use 'Header' in one of the endpoints for your API,
@@ -263,7 +373,7 @@ instance {-# OVERLAPPABLE #-} (AllCTRender ctypes a,
 -- This lets servant worry about extracting it from the request and turning
 -- it into a value of the type you specify.
 --
--- All it asks is for a 'FromText' instance.
+-- All it asks is for a 'FromHttpApiData' instance.
 --
 -- Example:
 --
@@ -277,17 +387,38 @@ instance {-# OVERLAPPABLE #-} (AllCTRender ctypes a,
 -- > server = viewReferer
 -- >   where viewReferer :: Referer -> EitherT ServantErr IO referer
 -- >         viewReferer referer = return referer
-instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout context m)
-      => HasServer (Header sym a :> sublayout) context m where
+instance (KnownSymbol sym, FromHttpApiData a, HasServer api context m
+         , SBoolI (FoldRequired mods), SBoolI (FoldLenient mods)
+         )
+      => HasServer (Header' mods sym a :> api) context m where
 
-  type ServerT (Header sym a :> sublayout) context m =
-    Maybe a -> ServerT sublayout context m
+  type ServerT (Header' mods sym a :> api) context m =
+    RequestArgument mods a -> ServerT api context m
 
-  route Proxy ctx subserver =
-    let mheader req = parseHeaderMaybe =<< getHeader str req
-    in  route (Proxy :: Proxy sublayout) ctx (passToServer subserver mheader)
-    where str = fromString $ symbolVal (Proxy :: Proxy sym)
+  hoistServerWithContext _ pc nt s = hoistServerWithContext (Proxy :: Proxy api) pc nt . s
 
+  route Proxy ctx subserver = route (Proxy :: Proxy api) ctx $
+      subserver `addHeaderCheck` withRequest headerCheck
+    where
+      headerName :: IsString n => n
+      headerName = fromString $ symbolVal (Proxy :: Proxy sym)
+
+      headerCheck :: Request -> DelayedM m (RequestArgument mods a)
+      headerCheck req =
+          unfoldRequestArgument (Proxy :: Proxy mods) errReq errSt mev
+        where
+          mev :: Maybe (Either Text a)
+          mev = fmap parseHeader $ getHeader headerName req
+
+          errReq = delayedFailFatal err400
+            { errBody = "Header " <> headerName <> " is required"
+            }
+
+          errSt e = delayedFailFatal err400
+            { errBody = cs $ "Error parsing header "
+                             <> headerName
+                             <> " failed: " <> e
+            }
 
 -- | If you use @'QueryParam' "author" Text@ in one of the endpoints for your API,
 -- this automatically requires your server-side handler to be a function
@@ -299,7 +430,7 @@ instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout context m)
 -- hand you 'Nothing'.
 --
 -- You can control how it'll be converted from 'Text' to your type
--- by simply providing an instance of 'FromText' for your type.
+-- by simply providing an instance of 'FromHttpApiData' for your type.
 --
 -- Example:
 --
@@ -310,23 +441,39 @@ instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout context m)
 -- >   where getBooksBy :: Maybe Text -> EitherT ServantErr IO [Book]
 -- >         getBooksBy Nothing       = ...return all books...
 -- >         getBooksBy (Just author) = ...return books by the given author...
-instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout context m)
-      => HasServer (QueryParam sym a :> sublayout) context m where
+instance (KnownSymbol sym, FromHttpApiData a, HasServer api context m
+         , SBoolI (FoldRequired mods), SBoolI (FoldLenient mods)
+         )
+      => HasServer (QueryParam' mods sym a :> api) context m where
 
-  type ServerT (QueryParam sym a :> sublayout) context m =
-    Maybe a -> ServerT sublayout context m
+  type ServerT (QueryParam' mods sym a :> api) context m =
+    RequestArgument mods a -> ServerT api context m
+
+  hoistServerWithContext _ pc nt s = hoistServerWithContext (Proxy :: Proxy api) pc nt . s
 
   route Proxy ctx subserver =
     let querytext r = parseQueryText $ rqQueryString r
-        param r =
-          case lookup paramname (querytext r) of
-            Nothing       -> Nothing -- param absent from the query string
-            Just Nothing  -> Nothing -- param present with no value -> Nothing
-            Just (Just v) -> parseQueryParamMaybe v -- if present, we try to convert to
-                                        -- the right type
-    in route (Proxy :: Proxy sublayout) ctx (passToServer subserver param)
-    where paramname = cs $ symbolVal (Proxy :: Proxy sym)
+        paramname = cs $ symbolVal (Proxy :: Proxy sym)
 
+        parseParam :: Request -> DelayedM m (RequestArgument mods a)
+        parseParam req =
+            unfoldRequestArgument (Proxy :: Proxy mods) errReq errSt mev
+          where
+            mev :: Maybe (Either T.Text a)
+            mev = fmap parseQueryParam $ join $ lookup paramname $ querytext req
+
+            errReq = delayedFailFatal err400
+              { errBody = cs $ "Query parameter " <> paramname <> " is required"
+              }
+
+            errSt e = delayedFailFatal err400
+              { errBody = cs $ "Error parsing query parameter "
+                               <> paramname <> " failed: " <> e
+              }
+
+        delayed = addParameterCheck subserver . withRequest $ parseParam
+
+    in route (Proxy :: Proxy api) ctx delayed
 
 -- | If you use @'QueryParams' "authors" Text@ in one of the endpoints for your API,
 -- this automatically requires your server-side handler to be a function
@@ -337,7 +484,7 @@ instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout context m)
 -- the type you specify.
 --
 -- You can control how the individual values are converted from 'Text' to your type
--- by simply providing an instance of 'FromText' for your type.
+-- by simply providing an instance of 'FromHttpApiData' for your type.
 --
 -- Example:
 --
@@ -347,25 +494,35 @@ instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout context m)
 -- > server = getBooksBy
 -- >   where getBooksBy :: [Text] -> EitherT ServantErr IO [Book]
 -- >         getBooksBy authors = ...return all books by these authors...
-instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout context m)
-      => HasServer (QueryParams sym a :> sublayout) context m where
+instance (KnownSymbol sym, FromHttpApiData a, HasServer api context m)
+      => HasServer (QueryParams sym a :> api) context m where
 
-  type ServerT (QueryParams sym a :> sublayout) context m =
-    [a] -> ServerT sublayout context m
+  type ServerT (QueryParams sym a :> api) context m =
+    [a] -> ServerT api context m
 
-  route Proxy ctx subserver =
-    let querytext r = parseQueryText $ rqQueryString r
-        -- if sym is "foo", we look for query string parameters
-        -- named "foo" or "foo[]" and call parseQueryParam on the
-        -- corresponding values
-        parameters r = filter looksLikeParam (querytext r)
-        values r = mapMaybe (convert . snd) (parameters r)
-    in  route (Proxy :: Proxy sublayout) ctx (passToServer subserver values)
-    where paramname = cs $ symbolVal (Proxy :: Proxy sym)
-          looksLikeParam (name, _) = name == paramname || name == (paramname <> "[]")
-          convert Nothing = Nothing
-          convert (Just v) = parseQueryParamMaybe v
+  hoistServerWithContext _ pc nt s = hoistServerWithContext (Proxy :: Proxy api) pc nt . s
 
+  route Proxy ctx subserver = route (Proxy :: Proxy api) ctx $
+      subserver `addParameterCheck` withRequest paramsCheck
+    where
+      paramname = cs $ symbolVal (Proxy :: Proxy sym)
+      paramsCheck req =
+          case partitionEithers $ fmap parseQueryParam params of
+              ([], parsed) -> return parsed
+              (errs, _)   -> delayedFailFatal err400
+                  { errBody = cs $ "Error parsing query parameter(s) "
+                                   <> paramname <> " failed: "
+                                   <> T.intercalate ", " errs
+                  }
+         where
+           params :: [T.Text]
+           params = mapMaybe snd
+                  . filter (looksLikeParam . fst)
+                  . parseQueryText
+                  . rqQueryString
+                  $ req
+
+           looksLikeParam name = name == paramname || name == (paramname <> "[]")
 
 -- | If you use @'QueryFlag' "published"@ in one of the endpoints for your API,
 -- this automatically requires your server-side handler to be a function
@@ -379,19 +536,21 @@ instance (KnownSymbol sym, FromHttpApiData a, HasServer sublayout context m)
 -- > server = getBooks
 -- >   where getBooks :: Bool -> EitherT ServantErr IO [Book]
 -- >         getBooks onlyPublished = ...return all books, or only the ones that are already published, depending on the argument...
-instance (KnownSymbol sym, HasServer sublayout context m)
-      => HasServer (QueryFlag sym :> sublayout) context m where
+instance (KnownSymbol sym, HasServer api context m)
+      => HasServer (QueryFlag sym :> api) context m where
 
-  type ServerT (QueryFlag sym :> sublayout) context m =
-    Bool -> ServerT sublayout context m
+  type ServerT (QueryFlag sym :> api) context m =
+    Bool -> ServerT api context m
 
-  route Proxy ctx subserver =
+  hoistServerWithContext _ pc nt s = hoistServerWithContext (Proxy :: Proxy api) pc nt . s
+
+  route Proxy context subserver =
     let querytext r = parseQueryText $ rqQueryString r
         param r = case lookup paramname (querytext r) of
           Just Nothing  -> True  -- param is there, with no value
           Just (Just v) -> examine v -- param with a value
           Nothing       -> False -- param not in the query string
-    in  route (Proxy :: Proxy sublayout) ctx (passToServer subserver param)
+    in  route (Proxy :: Proxy api) context (passToServer subserver param)
     where paramname = cs $ symbolVal (Proxy :: Proxy sym)
           examine v | v == "true" || v == "1" || v == "" = True
                     | otherwise = False
@@ -409,6 +568,8 @@ instance HasServer Raw context m where
 
   type ServerT Raw context m = m ()
 
+  hoistServerWithContext _ _ nt = nt
+
   route Proxy _ rawApplication = RawRouter $ \ env request respond -> do
     r <- runDelayed rawApplication env request
     case r of
@@ -416,13 +577,13 @@ instance HasServer Raw context m where
       Fail a      -> respond $ Fail a
       FailFatal e -> respond $ FailFatal e
 
-
 -- | If you use 'ReqBody' in one of the endpoints for your API,
 -- this automatically requires your server-side handler to be a function
 -- that takes an argument of the type specified by 'ReqBody'.
 -- The @Content-Type@ header is inspected, and the list provided is used to
 -- attempt deserialization. If the request does not have a @Content-Type@
--- header, it is treated as @application/octet-stream@.
+-- header, it is treated as @application/octet-stream@ (as specified in
+-- <https://tools.ietf.org/html/rfc7231#section-3.1.1.4 RFC7231>.
 -- This lets servant worry about extracting it from the request and turning
 -- it into a value of the type you specify.
 --
@@ -437,95 +598,153 @@ instance HasServer Raw context m where
 -- > server = postBook
 -- >   where postBook :: Book -> EitherT ServantErr IO Book
 -- >         postBook book = ...insert into your db...
-instance ( AllCTUnrender list a, HasServer sublayout context m
-         ) => HasServer (ReqBody list a :> sublayout) context m where
+instance ( AllCTUnrender list a, HasServer api context m, SBoolI (FoldLenient mods), MonadSnap m
+         ) => HasServer (ReqBody' mods list a :> api) context m where
 
-  type ServerT (ReqBody list a :> sublayout) context m =
-    a -> ServerT sublayout context m
+  type ServerT (ReqBody' mods list a :> api) context m =
+    If (FoldLenient mods) (Either String a) a -> ServerT api context m
 
-  route Proxy ctx subserver =
-    route (Proxy :: Proxy sublayout) ctx (addBodyCheck (subserver ) bodyCheck')
+  hoistServerWithContext _ pc nt s = hoistServerWithContext (Proxy :: Proxy api) pc nt . s
+
+  route Proxy context subserver
+      = route (Proxy :: Proxy api) context $
+          addBodyCheck subserver ctCheck bodyCheck
     where
-      -- bodyCheck' :: DelayedM m a
-      bodyCheck' = do
-        req <- lift getRequest
-        let contentTypeH = fromMaybe "application/octet-stream" $ getHeader hContentType req
-        mrqbody <- handleCTypeH (Proxy :: Proxy list) (cs contentTypeH) <$>
-                                 lift (readRequestBody 2147483647) -- Maximum size: 2GB
-        case mrqbody of
-          Nothing        -> delayedFailFatal err415
-          Just (Left e)  -> delayedFailFatal err400 { errBody = cs e }
-          Just (Right v) -> return v
+      -- Content-Type check, we only lookup we can try to parse the request body
+      ctCheck = withRequest $ \ request -> do
+        -- See HTTP RFC 2616, section 7.2.1
+        -- http://www.w3.org/Protocols/rfc2616/rfc2616-sec7.html#sec7.2.1
+        -- See also "W3C Internet Media Type registration, consistency of use"
+        -- http://www.w3.org/2001/tag/2002/0129-mime
+        let contentTypeH = fromMaybe "application/octet-stream"
+                         $ getHeader hContentType request
+        case canHandleCTypeH (Proxy :: Proxy list) (cs contentTypeH) :: Maybe (BL.ByteString -> Either String a) of
+          Nothing -> delayedFail err415
+          Just f -> return f
 
+      -- Body check, we get a body parsing functions as the first argument.
+      bodyCheck f = do
+        mrqbody <- lift $ runRequestBody $ \ stream -> f <$> BL.fromChunks <$> IOS.toList {- IOS.toLazyByteString -} stream
+        case sbool :: SBool (FoldLenient mods) of
+          STrue -> return mrqbody
+          SFalse -> case mrqbody of
+            Left e  -> delayedFailFatal err400 { errBody = cs e }
+            Right v -> return v
 
 -- | Make sure the incoming request starts with @"/path"@, strip it and
--- pass the rest of the request path to @sublayout@.
-instance (KnownSymbol path, HasServer sublayout context m) => HasServer (path :> sublayout) context m where
+-- pass the rest of the request path to @api@.
+instance (KnownSymbol path, HasServer api context m) => HasServer (path :> api) context m where
 
-  type ServerT (path :> sublayout) context m = ServerT sublayout context m
+  type ServerT (path :> api) context m = ServerT api context m
 
-  route Proxy ctx subserver =
+  route Proxy context subserver =
     pathRouter
       (cs (symbolVal proxyPath))
-      (route (Proxy :: Proxy sublayout) ctx subserver)
+      (route (Proxy :: Proxy api) context subserver)
     where proxyPath = Proxy :: Proxy path
+  hoistServerWithContext _ pc nt s = hoistServerWithContext (Proxy :: Proxy api) pc nt s
 
+instance HasServer api context m => HasServer (RemoteHost :> api) context m where
+  type ServerT (RemoteHost :> api) context m = B.ByteString -> ServerT api context m
+
+  route Proxy context subserver =
+    route (Proxy :: Proxy api) context (passToServer subserver rqHostName)
+  hoistServerWithContext _ pc nt s = hoistServerWithContext (Proxy :: Proxy api) pc nt . s
+
+instance HasServer api context m => HasServer (IsSecure :> api) context m where
+  type ServerT (IsSecure :> api) context m = IsSecure -> ServerT api context m
+
+  route Proxy context subserver =
+    route (Proxy :: Proxy api) context (passToServer subserver (bool NotSecure Secure . rqIsSecure))
+  hoistServerWithContext _ pc nt s = hoistServerWithContext (Proxy :: Proxy api) pc nt . s
+
+-- This appears to be about 1000000% WAI-specific, so better hope you didn't need it
+
+-- instance HasServer api context m => HasServer (Vault :> api) context m where
+--   type ServerT (Vault :> api) context m = Vault -> ServerT api context m
+-- 
+--   route Proxy context subserver =
+--     route (Proxy :: Proxy api) context (passToServer subserver vault)
+--   hoistServerWithContext _ pc nt s = hoistServerWithContext (Proxy :: Proxy api) pc nt . s
 
 instance HasServer api context m => HasServer (HttpVersion :> api) context m where
   type ServerT (HttpVersion :> api) context m = HttpVersion -> ServerT api context m
 
   route Proxy ctx subserver =
     route (Proxy :: Proxy api) ctx (passToServer subserver rqVersion)
+  hoistServerWithContext _ pc nt s = hoistServerWithContext (Proxy :: Proxy api) pc nt . s
 
+-- | Ignore @'Summary'@ in server handlers.
+instance HasServer api ctx m => HasServer (Summary desc :> api) ctx m where
+  type ServerT (Summary desc :> api) ctx m = ServerT api ctx m
 
-instance HasServer api context m => HasServer (IsSecure :> api) context m where
-  type ServerT (IsSecure :> api) context m = IsSecure -> ServerT api context m
+  route _ = route (Proxy :: Proxy api)
+  hoistServerWithContext _ pc nt s = hoistServerWithContext (Proxy :: Proxy api) pc nt s
 
-  route Proxy ctx subserver =
-    route (Proxy :: Proxy api) ctx (passToServer subserver (bool NotSecure Secure . rqIsSecure))
+-- | Ignore @'Description'@ in server handlers.
+instance HasServer api ctx m => HasServer (Description desc :> api) ctx m where
+  type ServerT (Description desc :> api) ctx m = ServerT api ctx m
 
-instance HasServer api context m => HasServer (RemoteHost :> api) context m where
-  type ServerT (RemoteHost :> api) context m = B.ByteString -> ServerT api context m
+  route _ = route (Proxy :: Proxy api)
+  hoistServerWithContext _ pc nt s = hoistServerWithContext (Proxy :: Proxy api) pc nt s
 
-  route Proxy ctx subserver =
-    route (Proxy :: Proxy api) ctx (passToServer subserver rqHostName)
+-- | Singleton type representing a server that serves an empty API.
+data EmptyServer = EmptyServer deriving (Typeable, Eq, Show, Bounded, Enum)
 
--- newtype BasicAuthCheck m usr =
---   BasicAuthCheck { unBasicAuthCheck :: BasicAuthData -> m (BasicAuthResult usr) }
---   deriving (Functor, Generic)
+-- | Server for `EmptyAPI`
+emptyServer :: ServerT EmptyAPI context m
+emptyServer = Tagged EmptyServer
 
-data BasicAuthResult usr = Unauthorized | BadPassword | NoSuchUser | Authorized usr
-  deriving (Functor, Eq, Read, Show, Generic)
+-- | The server for an `EmptyAPI` is `emptyAPIServer`.
+--
+-- > type MyApi = "nothing" :> EmptyApi
+-- >
+-- > server :: Server MyApi
+-- > server = emptyAPIServer
+instance HasServer EmptyAPI context m where
+  type ServerT EmptyAPI context m = Tagged m EmptyServer
 
-instance (HasServer api context m,
-          KnownSymbol realm,
-          HasContextEntry context (BasicAuthCheck m usr)
-         ) => HasServer (BasicAuth realm usr :> api) context m where
+  route Proxy _ _ = StaticRouter mempty mempty
+
+  hoistServerWithContext _ _ _ = retag
+
+-- | Basic Authentication
+instance ( KnownSymbol realm
+         , HasServer api context m
+         , HasContextEntry context (BasicAuthCheck m usr)
+         )
+    => HasServer (BasicAuth realm usr :> api) context m where
+
   type ServerT (BasicAuth realm usr :> api) context m = usr -> ServerT api context m
 
-  route Proxy ctx subserver =
-    route (Proxy :: Proxy api) ctx (subserver `addAuthCheck` authCheck)
+  route Proxy context subserver =
+    route (Proxy :: Proxy api) context (subserver `addAuthCheck` authCheck)
     where
       realm = B.pack $ symbolVal (Proxy :: Proxy realm)
-      basicAuthContext = getContextEntry ctx
-      authCheck = withRequest $ \req -> runBasicAuth req realm basicAuthContext
+      basicAuthContext = getContextEntry context
+      authCheck = withRequest $ \ req -> runBasicAuth req realm basicAuthContext
 
+  hoistServerWithContext _ pc nt s = hoistServerWithContext (Proxy :: Proxy api) pc nt . s
+
+-- * helpers
+--
 ct_wildcard :: B.ByteString
 ct_wildcard = "*" <> "/" <> "*" -- Because CPP
+{-
 
 instance ( MimeRender ctype a, ReflectMethod method, MimeRender ctype a, -- ToStreamGenerator m (f a),
-           FramingRender framing ctype, ToStreamGenerator f a
-         ) => HasServer (Stream method framing ctype (f a)) context m where
-  type ServerT (Stream method framing ctype (f a)) context m = m (f a)
+           FramingRender framing ctype -- , ToStreamGenerator f a
+         ) => HasServer (Stream method status framing ctype (f a)) context m where
+  type ServerT (Stream method status framing ctype (f a)) context m = m (f a)
 
   route Proxy _ action = streamRouter ([],) method (Proxy) (Proxy :: Proxy framing) (Proxy :: Proxy ctype) action
     where method = reflectMethod (Proxy :: Proxy method)
           -- status = toEnum . fromInteger $ natVal (Proxy :: Proxy status)
 
-instance ( MimeRender ctype a, ReflectMethod method, MimeRender ctype (f a), ToStreamGenerator m (f a),
-           FramingRender framing ctype, ToStreamGenerator f a, GetHeaders (Headers h (f a))
-         ) => HasServer (Stream method framing ctype (Headers h (f a))) context m where
-  type ServerT (Stream method framing ctype (Headers h (f a))) context m = m (Headers h (f a))
+instance ( MimeRender ctype a, ReflectMethod method, MimeRender ctype (f a), -- ToStreamGenerator m (f a),
+           FramingRender framing ctype, {- ToStreamGenerator f a, -} GetHeaders (Headers h (f a))
+         ) => HasServer (Stream method status framing ctype (Headers h (f a))) context m where
+  type ServerT (Stream method status framing ctype (Headers h (f a))) context m = m (Headers h (f a))
 
   route Proxy _ action =
     streamRouter (\x -> (getHeaders x, getResponse x))
@@ -537,48 +756,11 @@ instance ( MimeRender ctype a, ReflectMethod method, MimeRender ctype (f a), ToS
     where method = reflectMethod (Proxy :: Proxy method)
 
 
-streamRouter :: (MimeRender ctype a,
-                 FramingRender framing ctype,
-                 ToStreamGenerator f a,
-                 MonadSnap m
-                ) =>
-                (b -> ([(HeaderName, B.ByteString)], f a))
-             -> Method
-             -> Proxy m
-             -> Proxy framing
-             -> Proxy ctype
-             -> Delayed m env (m b)
-             -> Router m env
-streamRouter splitHeaders method handlerProxy framingproxy ctypeproxy action = leafRouter $ \env request respond ->
-          let accH    = fromMaybe ct_wildcard $ getHeader hAccept request
-              cmediatype = NHM.matchAccept [contentType ctypeproxy] accH
-              accCheck = when (isNothing cmediatype) $ delayedFail err406
-              contentHeader = (hContentType, NHM.renderHeader . maybeToList $ cmediatype)
-          in runAction (action `addMethodCheck` methodCheck method request
-                               `addAcceptCheck` accCheck
-                       ) env request respond $ \ output ->
-                let (headers, fa) = splitHeaders output
-                    k = getStreamGenerator . toStreamGenerator $ fa in
-                Route $ flip setResponseBody emptyResponse $ \outStream -> do
-                      let writeAndFlush bb = IOS.write (Just $ bb <> BB.flush) outStream
-                      writeAndFlush (BB.lazyByteString $ header framingproxy ctypeproxy)
-                      case boundary framingproxy ctypeproxy of
-                           BoundaryStrategyBracket f ->
-                                    let go x = let bs = mimeRender ctypeproxy x
-                                                   (before, after) = f bs
-                                               in writeAndFlush (   BB.lazyByteString before
-                                                                 <> BB.lazyByteString bs
-                                                                 <> BB.lazyByteString after)
-                                    in k go go
-                           BoundaryStrategyIntersperse sep -> k
-                             (\x -> do
-                                writeAndFlush . BB.lazyByteString $ mimeRender ctypeproxy x
-                             )
-                             (\x -> do
-                                writeAndFlush . (BB.lazyByteString sep <>) . BB.lazyByteString $ mimeRender ctypeproxy x
-                             )
-                           BoundaryStrategyGeneral f ->
-                                    let go = writeAndFlush . BB.lazyByteString . f . mimeRender ctypeproxy
-                                    in  k go go
-                      IOS.write (Just . BB.lazyByteString $ trailer framingproxy ctypeproxy) outStream
-                      return outStream
+
+-- newtype BasicAuthCheck m usr =
+--   BasicAuthCheck { unBasicAuthCheck :: BasicAuthData -> m (BasicAuthResult usr) }
+--   deriving (Functor, Generic)
+
+data BasicAuthResult usr = Unauthorized | BadPassword | NoSuchUser | Authorized usr
+  deriving (Functor, Eq, Read, Show, Generic)
+-}

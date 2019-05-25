@@ -118,14 +118,18 @@ data Delayed m env c where
   Delayed :: { capturesD :: env -> DelayedM m captures
              , methodD   :: DelayedM m ()
              , authD     :: DelayedM m auth
-             , bodyD     :: DelayedM m body
-             , serverD   :: captures -> auth -> body -> Request -> RouteResult c
+             , acceptD   :: DelayedM m ()
+             , contentD  :: DelayedM m contentType
+             , paramsD   :: DelayedM m params
+             , headersD  :: DelayedM m headers
+             , bodyD     :: contentType -> DelayedM m body
+             , serverD   :: captures -> params -> headers -> auth -> body -> Request -> RouteResult c
              } -> Delayed m env c
 
 instance Functor (Delayed m env) where
   fmap f Delayed{..} =
     Delayed
-      { serverD = \ c a b req -> f <$> serverD c a b req
+      { serverD = \ c p h a b req -> f <$> serverD c p h a b req
       , ..
       }
 
@@ -169,7 +173,7 @@ instance MonadTrans DelayedM where
 -- | A 'Delayed' without any stored checks.
 emptyDelayed :: Monad m => Proxy (m :: * -> *) -> RouteResult a -> Delayed m env a
 emptyDelayed (Proxy :: Proxy m) result =
-  Delayed (const r) r r r (\ _ _ _ _ -> result)
+  Delayed (const r) r r r r r r (const r) (\ _ _ _ _ _ _ -> result)
   where
     r :: DelayedM m ()
     r = return ()
@@ -193,9 +197,33 @@ addCapture :: forall env a b captured m. Monad m => Delayed m env (a -> b)
 addCapture Delayed{..} new =
   Delayed
     { capturesD = \ (txt, env) -> (,) <$> capturesD env <*> new txt
-    , serverD   = \ (x, v) a b req -> ($ v) <$> serverD x a b req
+    , serverD   = \ (x, v) p h a b req -> ($ v) <$> serverD x p h a b req
     , ..
     } -- Note [Existential Record Update]
+
+-- | Add a parameter check to the end of the params block
+addParameterCheck :: Monad m
+               => Delayed m env (a -> b)
+               -> DelayedM m a
+               -> Delayed m env b
+addParameterCheck Delayed {..} new =
+  Delayed
+    { paramsD = (,) <$> paramsD <*> new
+    , serverD = \c (p, pNew) h a b req -> ($ pNew) <$> serverD c p h a b req
+    , ..
+    }
+
+-- | Add a header check to the end of the headers block
+addHeaderCheck :: Monad m
+               => Delayed m env (a -> b)
+               -> DelayedM m a
+               -> Delayed m env b
+addHeaderCheck Delayed {..} new =
+  Delayed
+    { headersD = (,) <$> headersD <*> new
+    , serverD = \c p (h, hNew) a b req -> ($ hNew) <$> serverD c p h a b req
+    , ..
+    }
 
 -- | Add a method check to the end of the method block.
 addMethodCheck :: Monad m
@@ -216,25 +244,30 @@ addAuthCheck :: Monad m
 addAuthCheck Delayed{..} new =
   Delayed
     { authD   = (,) <$> authD <*> new
-    , serverD = \ c (y, v) b req -> ($ v) <$> serverD c y b req
+    , serverD = \ c p h (y, v) b req -> ($ v) <$> serverD c p h y b req
     , ..
     } -- Note [Existential Record Update]
 
--- | Add a body check to the end of the body block.
+-- | Add a content type and body checks around parameter checks.
+--
+-- We'll report failed content type check (415), before trying to parse
+-- query parameters (400). Which, in turn, happens before request body parsing.
 addBodyCheck :: Monad m
              => Delayed m env (a -> b)
-             -> DelayedM m a
+             -> DelayedM m c        -- ^ content type check
+             -> (c -> DelayedM m a) -- ^ body check
              -> Delayed m env b
-addBodyCheck Delayed{..} new =
+addBodyCheck Delayed{..} newContentD newBodyD =
   Delayed
-    { bodyD   = (,) <$> bodyD <*> new
-    , serverD = \ c a (z, v) req -> ($ v) <$> serverD c a z req
+    { contentD = (,) <$> contentD <*> newContentD
+    , bodyD   = \(content, c) -> (,) <$> bodyD content <*> newBodyD c
+    , serverD = \ c p h a (z, v) req -> ($ v) <$> serverD c p h a z req
     , ..
     } -- Note [Existential Record Update]
 
 
--- | Add an accept header check to the beginning of the body
--- block. There is a tradeoff here. In principle, we'd like
+-- | Add an accept header check before handling parameters.
+-- In principle, we'd like
 -- to take a bad body (400) response take precedence over a
 -- failed accept check (406). BUT to allow streaming the body,
 -- we cannot run the body check and then still backtrack.
@@ -249,7 +282,7 @@ addAcceptCheck :: Monad m
                -> Delayed m env a
 addAcceptCheck Delayed{..} new =
   Delayed
-    { bodyD = new *> bodyD
+    { acceptD = acceptD *> new
     , ..
     } -- Note [Existential Record Update]
 
@@ -259,7 +292,7 @@ addAcceptCheck Delayed{..} new =
 passToServer :: Delayed m env (a -> b) -> (Request -> a) -> Delayed m env b
 passToServer Delayed{..} x =
   Delayed
-    { serverD = \ c a b req -> ($ x req) <$> serverD c a b req
+    { serverD = \ c p h a b req -> ($ x req) <$> serverD c p h a b req
     , ..
     } -- Note [Existential Record Update]
 
@@ -279,5 +312,9 @@ runDelayed Delayed{..} env = runDelayedM $ do
   c <- capturesD env
   methodD
   a <- authD
-  b <- bodyD
-  DelayedM (\ req -> return $ serverD c a b req)
+  acceptD
+  content <- contentD
+  p <- paramsD  -- Has to be before body parsing, but after content-type checks
+  h <- headersD
+  b <- bodyD content
+  DelayedM (\ req -> return $ serverD c p h a b req)
