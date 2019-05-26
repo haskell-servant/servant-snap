@@ -1,3 +1,9 @@
+0.8.3
+-----
+
+Add support for servant-0.14
+Reorder handling of errors
+
 0.8.2
 ------
 
