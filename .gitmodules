@@ -1,6 +1,0 @@
-[submodule "deps/snap"]
-	path = deps/snap
-	url = https://github.com/snapframework/snap
-[submodule "deps/digestive-functors"]
-	path = deps/digestive-functors
-	url = https://github.com/jaspervdj/digestive-functors
