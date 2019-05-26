@@ -2,6 +2,7 @@
 
 module Servant.Server.Internal.SnapShims where
 
+import           Control.Monad.IO.Class
 import qualified Data.ByteString.Char8 as B
 import           Data.List             (foldl')
 import           Data.IORef
@@ -23,8 +24,9 @@ snapToApplication' snapAction req respond = do
 
 applicationToSnap :: MonadSnap m => Application m -> m ()
 applicationToSnap app = do
-  req <- getRequest
-  r <- app req return
+  req      <- getRequest
+  snapResp <- getResponse
+  r <- fmap (`addHeaders` headers snapResp) $ app req return
   putResponse r
 
 addHeaders :: HasHeaders a => a -> Headers -> a

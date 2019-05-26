@@ -15,7 +15,7 @@ import           Data.Text
 import           GHC.Generics
 import qualified Heist.Interpreted as I
 import           Snap.Core hiding (GET)
-import           Snap.CORS
+import           Snap.Util.CORS
 import           Snap.Snaplet
 import           Snap.Snaplet.Auth
 import           Snap.Snaplet.Session

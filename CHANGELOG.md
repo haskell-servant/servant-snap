@@ -3,7 +3,8 @@
 
 Support servant 0.15 and 0.16, which have a new `Stream` combinator
 Drop support for servant < 0.15
-
+Correct the way imperativelly added headers in request/response are managed (fixing CORS issue)
+More CORS test coverage
 
 0.8.3
 -----

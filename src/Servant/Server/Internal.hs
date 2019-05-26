@@ -68,7 +68,7 @@ import           Snap.Core                   hiding (Headers, Method,
                                               method, withRequest)
 import           Servant.API                 ((:<|>) (..), (:>), BasicAuth,
                                               Capture',
-                                              CaptureAll, Description, FramingRender (..), EmptyAPI
+                                              CaptureAll, Description, FramingRender (..), EmptyAPI,
                                               Header', IsSecure(..), If, QueryFlag, IsSecure(..),
                                               QueryParam', QueryParams, Raw,
                                               RemoteHost, ReqBody',
@@ -289,82 +289,6 @@ instance {-# OVERLAPPABLE #-} (AllCTRender ctypes a,
 
 
 
--- instance {-# OVERLAPPABLE #-} (MimeRender ctype a,
---                                ReflectMethod method,
---                                KnownNat status,
---                                FramingRender framing ctype,
---                                ToStreamGenerator b a)
---   => HasServer (Stream method status framing ctype b) context m where
---   type ServerT (Stream method status framing ctype b) context m = m b
---   hoistServerWithContext _ _ nt s = nt s
-
---   route Proxy _ = streamRouter ([],) method status (Proxy :: Proxy framing) (Proxy :: Proxy ctype)
---     where method = reflectMethod (Proxy :: Proxy method)
---           status = toEnum . fromInteger $ natVal (Proxy :: Proxy status)
-
-
--- instance {-# OVERLAPPABLE #-} (MimeRender ctype a,
---                                ReflectMethod method,
---                                KnownNat status,
---                                FramingRender framing ctype,
---                                ToStreamGenerator b a,
---                                GetHeaders (Headers h b))
---   => HasServer (Stream method status framing ctype (Headers h b)) context m where
-
---   type ServerT (Stream method status framing ctype (Headers h b)) context m = m (Headers h b)
---   hoistServerWithContext _ _ nt s = nt s
-
---   route Proxy _ = streamRouter (\x -> (getHeaders x, getResponse x)) method status (Proxy :: Proxy framing) (Proxy :: Proxy ctype)
---     where method = reflectMethod (Proxy :: Proxy method)
---           status = toEnum . fromInteger $ natVal (Proxy :: Proxy status)
-
-streamRouter :: (MimeRender ctype a,
-                 FramingRender framing ctype,
-                 ToStreamGenerator b a,
-                 MonadSnap m
-                ) =>
-                (c -> ([(HeaderName, B.ByteString)], b))
-             -> Method
-             -> Status
-             -> Proxy framing
-             -> Proxy ctype
-             -> Delayed m env (m c)
-             -> Router m env
-streamRouter splitHeaders method (Status code msg) framingproxy ctypeproxy action = leafRouter $ \env request respond ->
-          let accH    = fromMaybe ct_wildcard $ getHeader hAccept request
-              cmediatype = NHM.matchAccept [contentType ctypeproxy] accH
-              accCheck = when (isNothing cmediatype) $ delayedFail err406
-              contentHeader = (hContentType, NHM.renderHeader . maybeToList $ cmediatype)
-          in runAction (action `addMethodCheck` methodCheck method request
-                               `addAcceptCheck` accCheck
-                       ) env request respond $ \ output ->
-                let (headerz, fa) = splitHeaders output
-                    k = getStreamGenerator . toStreamGenerator $ fa in
-                Route $ setResponseStatus code msg
-                      $ (\r -> foldl' (\r' (h,h') -> addHeader h h' r') r $ contentHeader : headerz)
-                      $ flip setResponseBody emptyResponse $ \outStream -> do
-                        let writeAndFlush bb = IOS.write (Just $ bb <> BB.flush) outStream
-                        writeAndFlush (BB.lazyByteString $ header framingproxy ctypeproxy)
-                        case boundary framingproxy ctypeproxy of
-                             BoundaryStrategyBracket f ->
-                                      let go x = let bs = mimeRender ctypeproxy x
-                                                     (before, after) = f bs
-                                                 in writeAndFlush (   BB.lazyByteString before
-                                                                   <> BB.lazyByteString bs
-                                                                   <> BB.lazyByteString after)
-                                      in k go go
-                             BoundaryStrategyIntersperse sep -> k
-                               (\x -> do
-                                  writeAndFlush . BB.lazyByteString $ mimeRender ctypeproxy x
-                               )
-                               (\x -> do
-                                  writeAndFlush . (BB.lazyByteString sep <>) . BB.lazyByteString $ mimeRender ctypeproxy x
-                               )
-                             BoundaryStrategyGeneral f ->
-                                      let go = writeAndFlush . BB.lazyByteString . f . mimeRender ctypeproxy
-                                      in  k go go
-                        IOS.write (Just . BB.lazyByteString $ trailer framingproxy ctypeproxy) outStream
-                        return outStream
 
 
 -- | If you use 'Header' in one of the endpoints for your API,
@@ -745,6 +669,7 @@ instance forall ctype chunk method status framing m context a.
          ) => HasServer (Stream method status framing ctype a) context m where
   type ServerT (Stream method status framing ctype a) context m = m a
 
+  hoistServerWithContext _ _ nt s = nt s
   route Proxy _ action = streamRouter ([],) method status
                                       (Proxy :: Proxy framing)
                                       (Proxy :: Proxy ctype) action
@@ -756,6 +681,7 @@ instance ( MimeRender ctype chunk, ReflectMethod method, MimeRender ctype a, Kno
          ) => HasServer (Stream method status framing ctype (Headers h a)) context m where
   type ServerT (Stream method status framing ctype (Headers h a)) context m = m (Headers h a)
 
+  hoistServerWithContext _ _ nt s = nt s
   route Proxy _ action =
     streamRouter (\x -> (getHeaders x, getResponse x))
                  method

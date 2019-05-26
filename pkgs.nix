@@ -10,10 +10,10 @@ let
                           sha256 = "0dyn50gidzbgyq9yvqijnysai9hwd3srqvk8f8rykh09l375xb9j";
                         });
       hspec-snap-src = pkgs.fetchFromGitHub {
-                         owner  = "imalsogreg";
+                         owner  = "dbp";
                          repo   = "hspec-snap";
-                         rev    = "175cef28308627321c7b8792c198793dbb0e7914";
-                         sha256 = "0wr0bk5g0zs6hqrlrbvwndsrnjcwjmxyzkd17q73ln8gxzmvvrcs";
+                         rev    = "d13e3bd28b546728402e8e1ea2343b721c4b7dda";
+                         sha256 = "1x155cpb8fqkywvbanpankbly5410ly8v1nngpnmw8mnqldbfwd6";
                         };
     in {
       # haskellPackages = pkgs.haskell.packages.ghc822.override {
@@ -24,7 +24,6 @@ let
           # hspec-snap = doJailbreak super.hspec-snap;
           lens        = dontCheck super.lens;
           map-syntax  = dontCheck super.map-syntax;
-          # servant     = dontCheck self."servant-0.12";
 
           # For servant-0.16. Comment it out to get servant-0.15:
           # servant     = dontCheck (self.callCabal2nix "servant" (servant-src + "/servant") {});

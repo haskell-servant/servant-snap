@@ -49,9 +49,9 @@ data RouteResult a =
 toApplication :: forall m. MonadSnap m => RoutingApplication m -> Application m
 toApplication ra request respond = do
 
-  r        <- ra request routingRespond
-  snapResp <- getResponse
-  rspnd <- respond (r `addHeaders` headers snapResp)
+  snapReq  <- getRequest
+  r        <- ra (request `addHeaders` headers snapReq) routingRespond
+  rspnd <- respond r
 
   -- liftIO $ putStrLn $ unlines [
   --   "----------"
@@ -70,7 +70,7 @@ toApplication ra request respond = do
   --   , "rspnd"
   --   , show rspnd
   --   ]
-  
+
   return rspnd
 
   -- snapReq  <- getRequest
