@@ -1,3 +1,8 @@
+0.8.3.1
+-----
+
+Backport the response header fix from 0.8.4 (we can now use it with servant 0.14)
+
 0.8.3
 -----
 

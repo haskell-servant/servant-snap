@@ -203,15 +203,11 @@ verbSpec = do
                   (serveSnap api server) sInit
           shouldHaveHeaders resp  [("H","5")]
 
-        -- TODO: Why doesn't this test pass?
-        -- it "returs CORS headers" $ do
-        --   resp  <- SST.runHandler Nothing
-        --           (mkRequest method "/header" ""
-        --            [("Origin"
-        --             ,"http://example.com")] "")
-        --           (serveSnap api server) sInit
-        --   shouldHaveHeaders resp  [("access-control-allow-origin"
-        --                           ,"http://example.com")]
+        it "returs CORS headers" $ do
+          (_, snapm, _) <- runSnaplet Nothing sInit
+          resp <- fmap Right $ ST.runHandler (mkRequest method "/noContent" "" [("Origin", "http://example.com")] "") snapm
+          shouldHaveHeaders resp  [("access-control-allow-origin"
+                                  ,"http://example.com")]
 
         it "sets the content-type header" $ do
           resp <- SST.runHandler Nothing (mkRequest method "" "" [] "")
