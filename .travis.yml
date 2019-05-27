@@ -36,7 +36,8 @@ matrix:
 before_install:
  - unset CC
  - mkdir -p ${HOME}/bin
- - mkdir -p deps
+ - export PATH=/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:$HOME/bin:$PATH
+ - mkdir deps
 
 install:
  - export PATH=/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:$HOME/bin:$PATH

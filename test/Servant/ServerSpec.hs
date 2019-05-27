@@ -1,7 +1,7 @@
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE DeriveGeneric        #-}
-{-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE KindSignatures       #-}
 {-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE OverloadedStrings    #-}
@@ -17,90 +17,76 @@ module Servant.ServerSpec where
 
 
 -------------------------------------------------------------------------------
-import           Control.Lens               (makeLenses)
-import           Control.Monad              (forM_, unless, void, when)
-import           Control.Monad.IO.Class     (liftIO)
-import           Data.Aeson                 (FromJSON, ToJSON)
-import qualified Data.Aeson                 as A
-import qualified Data.ByteString.Base64     as B64
-import qualified Data.ByteString.Char8      as B8
-import qualified Data.ByteString.Lazy       as BL
-import           Data.CaseInsensitive       (mk)
-import           Data.Char                  (toUpper)
-import           Data.Functor               ((<$>))
-import           Data.Maybe                 (fromMaybe)
+import           Control.Lens                                (makeLenses)
+import           Control.Monad                               (forM_, unless,
+                                                              void, when)
+import           Control.Monad.IO.Class                      (liftIO)
+import           Data.Aeson                                  (FromJSON, ToJSON)
+import qualified Data.Aeson                                  as A
+import qualified Data.ByteString.Base64                      as B64
+import qualified Data.ByteString.Char8                       as B8
+import qualified Data.ByteString.Lazy                        as BL
+import           Data.CaseInsensitive                        (mk)
+import           Data.Char                                   (toUpper)
+import           Data.Functor                                ((<$>))
+import           Data.List                                   (foldl')
+import           Data.Maybe                                  (fromMaybe)
 import           Data.Monoid
-import           Data.Proxy                 (Proxy (Proxy))
-import qualified Data.Set                   as Set
-import qualified Data.Text                  as T
-import qualified Data.Text.Lazy             as TL
-import qualified Data.Text.Encoding         as T
-import qualified Data.Text.Lazy.Encoding    as TL
-import           GHC.Generics               (Generic)
-import           Network.HTTP.Types         (hAccept, hContentType)
+import           Data.Proxy                                  (Proxy (Proxy))
+import qualified Data.Set                                    as Set
+import qualified Data.Text                                   as T
+import qualified Data.Text.Encoding                          as T
+import qualified Data.Text.Lazy                              as TL
+import qualified Data.Text.Lazy.Encoding                     as TL
+import           GHC.Generics                                (Generic)
+import           Network.HTTP.Types                          (hAccept,
+                                                              hContentType)
 import qualified Network.HTTP.Types
-import           Snap.Core                  hiding (Headers, addHeader)
-import qualified Snap.Core                  as SC
-import           Snap.CORS
+import           Snap.Core                                   hiding (Headers,
+                                                              addHeader)
+import qualified Snap.Core                                   as SC
 import           Snap.Snaplet
-import qualified Snap.Snaplet.Test          as SST
-import qualified Snap.Test                  as ST
+import qualified Snap.Snaplet.Test                           as SST
+import qualified Snap.Test                                   as ST
+import qualified Snap.Util.CORS                              as CORS
 -------------------------------------------------------------------------------
-import           Test.Hspec
-import           Test.Hspec.Snap            hiding (NotFound)
-import qualified Test.Hspec.Snap            as THS
-import qualified Test.HUnit                 as HU
-import           Servant.API                ((:<|>) (..), (:>),
-                                             addHeader, BasicAuth, Capture,
-                                             CaptureAll, Header (..), Headers,
-                                             IsSecure(..), JSON, NoContent(..),
-                                             PlainText, QueryFlag, QueryParam,
-                                             QueryParams, Raw, RemoteHost,
-                                             ReqBody)
-import           Servant.API.Verbs          (Verb, Get, Post, Put, Delete,
-                                             Patch)
-import qualified Servant.API.Verbs          as V
-import           Servant.Server              hiding (route)
-import           Servant.Server.Internal     (HasServer)
+import           Servant.API                                 ((:<|>) (..), (:>),
+                                                              BasicAuth,
+                                                              Capture,
+                                                              CaptureAll,
+                                                              Header (..),
+                                                              Headers,
+                                                              IsSecure (..),
+                                                              JSON,
+                                                              NoContent (..),
+                                                              NoFraming,
+                                                              OctetStream,
+                                                              PlainText,
+                                                              QueryFlag,
+                                                              QueryParam,
+                                                              QueryParams, Raw,
+                                                              RemoteHost,
+                                                              ReqBody, SourceIO,
+                                                              Stream, addHeader)
+import           Servant.API.Verbs                           (Delete, Get,
+                                                              Patch, Post, Put,
+                                                              Verb)
+import qualified Servant.API.Verbs                           as V
+import           Servant.Server                              hiding (route)
+import           Servant.Server.Internal                     (HasServer)
 import           Servant.Server.Internal.BasicAuth
 import           Servant.Server.Internal.Context
+import qualified Servant.Types.SourceT                       as S
+import           Servant.Utils.SnapTestUtils
 import           Snap.Snaplet.Auth
 import           Snap.Snaplet.Auth.Backends.JsonFile
-import qualified Snap.Util.CORS as CORS
 import           Snap.Snaplet.Session
 import           Snap.Snaplet.Session.Backends.CookieSession
-
--------------------------------------------------------------------------------
--- * test data types
-
-data App = App { _auth :: Snaplet (AuthManager App)
-               , _sess :: Snaplet SessionManager}
-makeLenses 'App
-
-type AppHandler = Handler App App
-
-app :: SnapletInit App App
-app = app' []
-
-app' :: [(B8.ByteString, AppHandler ())] -> SnapletInit App App
-app' rs = makeSnaplet "servantsnap" "A test app for servant-snap" Nothing $ do
-  s <- nestSnaplet "sess" sess $
-           initCookieSessionManager "site_key.txt" "sess" Nothing (Just 3600)
-  a <- nestSnaplet "auth" auth $ initJsonFileAuthManager defAuthSettings sess "users.json"
-  addRoutes rs
-  wrapSite (\h -> createTestUserIfMissing >> CORS.applyCORS CORS.defaultOptions h)
-  return (App a s)
-
-createTestUserIfMissing :: Handler App App ()
-createTestUserIfMissing =
-  with auth $ usernameExists testLogin >>= \case
-    True  -> return ()
-    False -> void $ createUser testLogin testPassword
-
-testLogin    = "greg"
-testPassword = "p@ssword"
-
--------------------------------------------------------------------------------
+import qualified Snap.Util.CORS                              as CORS
+import           Test.Hspec
+import           Test.Hspec.Snap                             hiding (NotFound)
+import qualified Test.Hspec.Snap                             as THS
+import qualified Test.HUnit                                  as HU
 
 
 -- * Specs
@@ -124,6 +110,7 @@ spec = do
 -- * verbSpec {{{
 ------------------------------------------------------------------------------
 
+
 type VerbApi method status
     =                Verb method status '[JSON] Person
  :<|> "noContent" :> Verb method status '[JSON] NoContent
@@ -132,6 +119,7 @@ type VerbApi method status
  :<|> "accept"    :> (    Verb method status '[JSON] Person
                      :<|> Verb method status '[PlainText] String
                      )
+ :<|> "stream"    :> Stream method status NoFraming OctetStream (SourceIO B8.ByteString)
 
 
 verbSpec :: Spec
@@ -142,6 +130,7 @@ verbSpec = do
           :<|> return (addHeader 5 alice)
           :<|> return (addHeader 10 NoContent)
           :<|> (return alice :<|> return "B")
+          :<|> return (S.source ["bytestring"])
       get200     = Proxy :: Proxy (VerbApi 'V.GET 200)
       post210    = Proxy :: Proxy (VerbApi 'V.POST 210)
       put203     = Proxy :: Proxy (VerbApi 'V.PUT 203)
@@ -179,9 +168,10 @@ verbSpec = do
             liftIO $ statusIs response status `shouldBe` True
 
         let sInit = app' verbRoutes
-            runUrl p = SST.runHandler Nothing
-                       (mkRequest method p "" [] "")
-                       (serveSnap api server) sInit
+            runUrl p = testSnaplet sInit (mkRequest method p "" [] "")
+            -- runUrl p = SST.runHandler Nothing
+            --            (mkRequest method p "" [] "")
+            --            (serveSnap api server) sInit
 
         -- This group is run with hspec directly
 
@@ -204,14 +194,10 @@ verbSpec = do
           shouldHaveHeaders resp  [("H","5")]
 
         -- TODO: Why doesn't this test pass?
-        -- it "returs CORS headers" $ do
-        --   resp  <- SST.runHandler Nothing
-        --           (mkRequest method "/header" ""
-        --            [("Origin"
-        --             ,"http://example.com")] "")
-        --           (serveSnap api server) sInit
-        --   shouldHaveHeaders resp  [("access-control-allow-origin"
-        --                           ,"http://example.com")]
+        it "returs CORS headers" $ do
+          resp  <- testSnaplet sInit (mkRequest method "/noContent" "" [("Origin", "http://example.com")] "")
+          shouldHaveHeaders resp  [("access-control-allow-origin"
+                                  ,"http://example.com")]
 
         it "sets the content-type header" $ do
           resp <- SST.runHandler Nothing (mkRequest method "" "" [] "")
@@ -226,6 +212,13 @@ verbSpec = do
                     (serveSnap api server) sInit
             resp `shouldHaveStatus` status
             resp `shouldHaveBody` "B"
+
+        unless (method == SC.HEAD) $ it "works for Stream as for Result" $ do
+          resp <- SST.runHandler Nothing
+                                 (mkRequest method "/stream" "" [] "")
+                                 (serveSnap api server) sInit
+          resp `shouldHaveStatus` status
+          resp `shouldHaveBody`   "bytestring"
 
   test "GET 200" get200 (routes get200 EmptyContext server) SC.GET 200
   test "POST 210" post210 (routes post210 EmptyContext server) SC.POST 210
@@ -257,10 +250,10 @@ captureApi2 = Proxy
 captureServer2 :: Server CaptureApi2 '[] AppHandler
 captureServer2 _ = do
   rq <- getRequest
-  writeBS (SC.rqPathInfo rq) 
+  writeBS (SC.rqPathInfo rq)
 
 captureSpec :: Spec
-captureSpec = do -- snap (route (routes captureApi captureServer)) app $  
+captureSpec = do -- snap (route (routes captureApi captureServer)) app $
 
   let ( sInit , _ ) = mkInitAndServer captureApi  EmptyContext captureServer
       ( sInit2, _ ) = mkInitAndServer captureApi2 EmptyContext captureServer2
@@ -363,7 +356,7 @@ qpServer = queryParamServer :<|> qpNames :<|> qpCapitalize
         qpCapitalize True  = return alice { name = map toUpper (name alice) }
 
         queryParamServer (Just name_) = return alice{name = name_}
-        queryParamServer Nothing = return alice
+        queryParamServer Nothing      = return alice
 
 queryParamSpec :: Spec
 queryParamSpec = do
@@ -700,7 +693,7 @@ miscServ = versionHandler
 
   where versionHandler = return :: HttpVersion -> AppHandler HttpVersion
         secureHandler :: IsSecure -> AppHandler String
-        secureHandler Secure = return "secure"
+        secureHandler Secure    = return "secure"
         secureHandler NotSecure = return "not secure"
         hostHandler = return . B8.unpack  :: B8.ByteString -> AppHandler String
 
@@ -770,7 +763,7 @@ basicAuthSpec = do
       authHeader un pw = "Basic " <> B64.encode (T.encodeUtf8 un <> ":" <> pw)
 
   describe "Checks auth" $ do
-    
+
     it "returns 401 when not logged  in" $ do
       response <- runReqOnApi baApi (baCheck :. EmptyContext) getSecret SC.GET "/secret" "" [] ""
       response `shouldHaveStatus` 401
@@ -822,120 +815,22 @@ beholder = Animal "Beholder" 0
 ------------------------------------------------------------------------------
 
 getStatus :: TestResponse -> Maybe Int
-getStatus (Html (RespCode s) _) = Just s
-getStatus (Json (RespCode s) _) = Just s
-getStatus THS.NotFound = Nothing
+getStatus (Html (RespCode s) _)     = Just s
+getStatus (Json (RespCode s) _)     = Just s
+getStatus THS.NotFound              = Nothing
 getStatus (Redirect (RespCode s) _) = Just s
-getStatus (Other (RespCode s)) = Just s
-getStatus Empty = Nothing
+getStatus (Other (RespCode s))      = Just s
+getStatus Empty                     = Nothing
 
 statusIs :: TestResponse -> Int -> Bool
 statusIs r s = getStatus r == Just s
 
 decodesTo :: (FromJSON a, Eq a) => TestResponse -> a -> Bool
 decodesTo (Json _ bs) a = A.decode' bs == Just a
-decodesTo _ _ = False
+decodesTo _ _           = False
 
 bodyIs :: TestResponse -> TL.Text -> Bool
 bodyIs (Html _ t) target = t == TL.toStrict target
 bodyIs (Json _ b) target = b == TL.encodeUtf8 target
-bodyIs _ _ = False
+bodyIs _ _               = False
 
-------------------------------------------------------------------------------
--- * hspec helpers
-------------------------------------------------------------------------------
-
-shouldHaveBody :: Either T.Text Response -> T.Text -> IO ()
-shouldHaveBody (Left e) _ = HU.assertFailure $
-                            "Failed to respond: " ++ T.unpack e
-shouldHaveBody (Right r) a = do
-  bod <- ST.getResponseBody r
-  bod `shouldBe` T.encodeUtf8 a
-
-shouldHaveStatus :: Either T.Text Response -> Int -> IO ()
-shouldHaveStatus (Left e) _ = HU.assertFailure $
-                              "Failed to respond: " ++ T.unpack e
-shouldHaveStatus (Right r) a = do
-  SC.rspStatus r `shouldBe` a
-
-
-shouldDecodeTo :: (FromJSON a, Eq a, Show a)
-               => Either T.Text Response
-               -> a
-               -> IO ()
-shouldDecodeTo (Left e) _ = HU.assertFailure $
-                            "Failed to respond: " ++ T.unpack e
-shouldDecodeTo (Right resp) a = do
-  bod <- ST.getResponseBody resp
-  case A.decode' $ BL.fromStrict bod of
-    Just x | x == a -> return ()
-    Just _ -> HU.assertFailure $
-              "Failed to decode response to " ++ show a ++
-              " from body: " ++ B8.unpack bod
-    Nothing -> HU.assertFailure $ "Failed to decode respone from body: " ++
-               B8.unpack bod ++ "\nResponse: " ++ show resp
-    
-shouldHaveHeaders :: Either T.Text Response
-                  -> [(B8.ByteString, B8.ByteString)]
-                  -> Expectation
-shouldHaveHeaders (Left e) _ = expectationFailure $ T.unpack e
-shouldHaveHeaders (Right resp) hs = do
-  let respHs  = Set.fromList $ SC.listHeaders resp
-      hs'     = Set.fromList $  (\(k,v) -> (mk k,v)) <$> hs
-      missing = Set.toList $ Set.difference hs' respHs
-  case missing of
-    [] -> return ()
-    _  -> expectationFailure $
-     "These expected headers and values were missing: " ++ show missing ++
-     " from the response's: " ++ show (Set.toList respHs)
-
-
-------------------------------------------------------------------------------
--- * Assorted Snap helpers
-------------------------------------------------------------------------------
-
-mkInitAndServer :: (HasServer api context m, m ~ AppHandler)
-                => Proxy (api :: *)
-                -> Context context
-                -> Server api context AppHandler
-                -> (SnapletInit App App, AppHandler ())
-mkInitAndServer api ctx serv =
-  let sRoute = serveSnapWithContext api ctx serv
-  in  (app' [("", sRoute)], sRoute)
-
-
-mkRequest :: Method
-          -> B8.ByteString
-          -> B8.ByteString
-          -> [Network.HTTP.Types.Header]
-          -> B8.ByteString
-          -> ST.RequestBuilder IO ()
-mkRequest mth pth qs hds bdy = do
-  let ct = fromMaybe "" (Prelude.lookup hContentType hds)
-  ST.postRaw pth ct bdy
-  ST.setQueryStringRaw qs
-  unless (mth == SC.POST) $ ST.setRequestType (ST.RequestWithRawBody mth bdy)
-  forM_ hds (\(k, v) -> unless (k == hContentType) $ ST.addHeader k v)
-  -- req <- State.get -- Useful for debugging
-  -- liftIO $ print req
-
-runReqOnApi :: (HasServer api context m, m ~ AppHandler)
-            => Proxy (api :: *)
-            -> Context context
-            -> Server api context AppHandler
-            -> Method
-            -> B8.ByteString
-            -> B8.ByteString
-            -> [Network.HTTP.Types.Header]
-            -> B8.ByteString
-            -> IO (Either T.Text Response)
-runReqOnApi api ctx serv method route qs hds bod =
-  let (sInit, serv') = mkInitAndServer api ctx serv
-  in SST.runHandler Nothing (mkRequest method route qs hds bod) serv' sInit
-
-routes :: (HasServer api context m, m ~ AppHandler)
-       => Proxy (api :: *)
-       -> Context context
-       -> Server api context AppHandler
-       -> [(B8.ByteString, AppHandler ())]
-routes p ctx s = [("", serveSnapWithContext p ctx s)]
