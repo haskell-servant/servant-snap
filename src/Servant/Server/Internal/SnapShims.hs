@@ -24,7 +24,8 @@ snapToApplication' snapAction req respond = do
 applicationToSnap :: MonadSnap m => Application m -> m ()
 applicationToSnap app = do
   req <- getRequest
-  r <- app req return
+  snapResp <- getResponse
+  r <- fmap (`addHeaders` headers snapResp) $ app req return
   putResponse r
 
 addHeaders :: HasHeaders a => a -> Headers -> a

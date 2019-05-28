@@ -1,3 +1,8 @@
+0.8.3.2
+-----
+
+Include the changes intended for 0.8.3.1 in git and the release sdist
+
 0.8.3.1
 -----
 
