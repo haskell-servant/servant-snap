@@ -3,24 +3,24 @@
 , directory, either, errors, exceptions, filepath, heist, hspec
 , hspec-core, hspec-snap, http-api-data, http-types, HUnit
 , io-streams, lens, map-syntax, mmorph, mtl, network, network-uri
-, parsec, process, QuickCheck, servant, servant-client, snap, snap-core, snap-cors
+, parsec, process, QuickCheck, servant, snap, snap-core, snap-cors
 , snap-server, stdenv, string-conversions, temporary, text, time
 , transformers, word8
 }:
 mkDerivation {
   pname = "servant-snap";
-  version = "0.8.1.0";
+  version = "0.8.4.0";
   src = ./.;
   isLibrary = true;
   isExecutable = true;
   libraryHaskellDepends = [
     aeson attoparsec base base64-bytestring bytestring case-insensitive
     containers either filepath http-api-data http-types io-streams
-    mmorph mtl network-uri servant servant-client snap snap-core snap-server
+    mmorph mtl network-uri servant snap snap-core snap-server
     string-conversions text transformers word8
   ];
   executableHaskellDepends = [
-    aeson base bytestring either errors heist lens map-syntax servant servant-client
+    aeson base bytestring either errors heist lens map-syntax servant
     snap snap-core snap-cors snap-server text transformers
   ];
   testHaskellDepends = [
