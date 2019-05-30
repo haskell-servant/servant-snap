@@ -9,7 +9,7 @@
 }:
 mkDerivation {
   pname = "servant-snap";
-  version = "0.8.4.0";
+  version = "0.8.4.1";
   src = ./.;
   isLibrary = true;
   isExecutable = true;
