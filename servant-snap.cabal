@@ -1,5 +1,5 @@
 name:                servant-snap
-version:             0.8.4
+version:             0.8.4.1
 synopsis:            A family of combinators for defining webservices APIs and serving them
 description:
   Interpret a Servant API as a Snap server, using any Snaplets you like.
@@ -83,10 +83,8 @@ executable snap-greet
     , bytestring
     , errors
     , heist
-    , http-client
     , lens
     , servant
-    , servant-client
     , servant-snap
     , map-syntax
     , snap
