@@ -1,3 +1,9 @@
+0.8.4.1
+-----
+
+Drop servant-client and http-client dependencies from snap-greet
+
+
 0.8.4
 -----
 
@@ -5,6 +11,13 @@ Support servant 0.15 and 0.16, which have a new `Stream` combinator
 Drop support for servant < 0.15
 Correct the way imperativelly added headers in request/response are managed (fixing CORS issue)
 More CORS test coverage
+
+
+0.8.3.2
+-----
+
+Backport the response header fix from 0.8.4 (we can now use it with servant 0.14)
+
 
 0.8.3
 -----
