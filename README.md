@@ -132,5 +132,5 @@ app =  makeSnaplet "app" "standard example app" Nothing $ do
   return $ App h s d a
 
 main :: IO ()
-main = httpServe defaultConfig app
+main = serveSnaplet defaultConfig app
 ```
