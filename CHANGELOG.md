@@ -1,3 +1,9 @@
+0.8.5.0
+-----
+
+Bump dependencies for ghc-8.8.2
+
+
 0.8.4.1
 -----
 

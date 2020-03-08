@@ -1,3 +1,4 @@
+{ nixpkgs ? null }:
 let
   overlay = pself: pkgs:
     let
@@ -19,8 +20,10 @@ let
       # haskellPackages = pkgs.haskell.packages.ghc822.override {
       haskellPackages = pkgs.haskellPackages.override {
         overrides = self: super: {
-          #hspec-snap = dontCheck (self.callPackage ./pkgs/hspec-snap.nix {});
-          hspec-snap = self.callCabal2nix "hspec-snap" hspec-snap-src {};
+          # hspec-snap = dontCheck (self.callPackage ./pkgs/hspec-snap.nix {});
+          # hspec-snap = self.callCabal2nix "hspec-snap" hspec-snap-src {};
+          # hspec-snap = self.callHackage "hspec-snap" "1.0.2.0" {};
+          # hspec-snap = self.callPackage ../hspec-snap {};
           # hspec-snap = doJailbreak super.hspec-snap;
           lens        = dontCheck super.lens;
           map-syntax  = dontCheck super.map-syntax;
@@ -40,4 +43,7 @@ let
         };
       };
     };
-in import ./nixpkgs.nix { overlays = [overlay]; }
+in import (if isNull nixpkgs
+           then ./nixpkgs.nix
+           else nixpkgs
+          ) { overlays = [overlay]; }
