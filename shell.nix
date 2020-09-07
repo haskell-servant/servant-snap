@@ -1,7 +1,14 @@
-{ compiler ? "default"
-, nixpkgs  ? null
+{ pkgs ? import <nixpkgs> {},
+  compilerVersion ? "ghc865"
 }:
-let
-  rel = import ./release.nix { inherit compiler nixpkgs; };
-in
-  rel.servant-snap.env
+
+pkgs.haskell.packages."${compilerVersion}".developPackage {
+  name = "servant-snap";
+  root = pkgs.lib.cleanSourceWith
+    {
+      src = ./.;
+      filter = path: type:
+        !(baseNameOf (toString path) == "dist-newstyle");
+
+    };
+}
