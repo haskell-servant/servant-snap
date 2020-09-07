@@ -6,30 +6,33 @@
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 module Servant.Server.Internal.RoutingApplication where
 
-import           Control.Applicative                 (Applicative(..), Alternative(..), (<$>))
-import           Control.Monad                       (ap, liftM)
-import           Control.Monad.IO.Class              (MonadIO, liftIO)
+import           Control.Applicative                (Alternative (..),
+                                                     Applicative (..), (<$>))
+import           Control.Monad                      (ap, liftM)
+import           Control.Monad.IO.Class             (MonadIO, liftIO)
 import           Control.Monad.Trans.Class
-import qualified Data.ByteString                     as B
-import qualified Data.ByteString.Builder             as Builder
-import qualified Data.ByteString.Lazy                as BL
-import           Data.CaseInsensitive                (CI)
-import qualified Data.List                           as L
-import           Data.Proxy                          (Proxy(..))
-import           Network.HTTP.Types                  (Status(..))
-import qualified System.IO.Streams                   as Streams
-import           Servant.Server.Internal.SnapShims
-import           Servant.Server.Internal.ServantErr
+import qualified Data.ByteString                    as B
+import qualified Data.ByteString.Builder            as Builder
+import qualified Data.ByteString.Lazy               as BL
+import           Data.CaseInsensitive               (CI)
+import qualified Data.List                          as L
+import           Data.Proxy                         (Proxy (..))
+import           Network.HTTP.Types                 (Status (..))
 import           Snap.Core
-import           Snap.Internal.Http.Types            (setResponseBody)
+import           Snap.Internal.Http.Types           (setResponseBody)
+import qualified System.IO.Streams                  as Streams
+
+
+import           Servant.Server.Internal.ServantErr
+import           Servant.Server.Internal.SnapShims
 
 
 type RoutingApplication m =
@@ -49,36 +52,8 @@ data RouteResult a =
 toApplication :: forall m. MonadSnap m => RoutingApplication m -> Application m
 toApplication ra request respond = do
 
-  snapReq  <- getRequest
-  r        <- ra (request `addHeaders` headers snapReq) routingRespond
-  rspnd <- respond r
-
-  -- liftIO $ putStrLn $ unlines [
-  --   "----------"
-  --   , "SNAP REQ"
-  --   , show snapReq
-  --   , "----------"
-  --   , "request"
-  --   , show request
-  --   , "----------"
-  --   , "r"
-  --   , show r
-  --   , "----------"
-  --   , "snapResp"
-  --   , show snapResp
-  --   , "----------"
-  --   , "rspnd"
-  --   , show rspnd
-  --   ]
-
-  return rspnd
-
-  -- snapReq  <- getRequest
-  -- r        <- ra (request `addHeaders` headers snapReq) routingRespond
-  -- respond r
-
-  -- r <- ra request routingRespond
-  -- respond r
+  r <- ra request routingRespond
+  respond r
 
    where
      routingRespond (Fail err) = case errHTTPCode err of
@@ -160,7 +135,7 @@ instance (Monad m, MonadSnap m) => Alternative (DelayedM m) where
     respA <- runDelayedM a req
     case respA of
       Route a' -> return $ Route a'
-      _ -> runDelayedM b req
+      _        -> runDelayedM b req
 
 
 instance MonadTrans DelayedM where
