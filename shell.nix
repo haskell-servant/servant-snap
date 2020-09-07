@@ -1,5 +1,5 @@
 { pkgs ? import <nixpkgs> {},
-  compilerVersion ? "ghc883"
+  compilerVersion ? "ghc865"
 }:
 
 pkgs.haskell.packages."${compilerVersion}".developPackage {
