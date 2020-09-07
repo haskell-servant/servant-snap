@@ -193,7 +193,6 @@ verbSpec = do
                   (serveSnap api server) sInit
           shouldHaveHeaders resp  [("H","5")]
 
-        -- TODO: Why doesn't this test pass?
         it "returs CORS headers" $ do
           resp  <- testSnaplet sInit (mkRequest method "/noContent" "" [("Origin", "http://example.com")] "")
           shouldHaveHeaders resp  [("access-control-allow-origin"
@@ -363,7 +362,7 @@ queryParamSpec = do
   describe "Servant.API.QueryParam" $ do
 
       let runTest :: B8.ByteString -> B8.ByteString -> IO (Either T.Text Response)
-          runTest p qs = runReqOnApi queryParamApi EmptyContext qpServer SC.GET p qs [(hContentType,"application/json;charset=utf-8")] ""
+          runTest p qs = runReqOnApi queryParamApi EmptyContext qpServer SC.GET p qs [(hContentType,"application/json")] ""
 
       it "allows retrieving simple GET parameters" $
         runTest "" "?name=bob" >>= (`shouldDecodeTo` alice {name="bob"})
@@ -459,8 +458,7 @@ reqBodySpec = do
   describe "Servant.API.ReqBody" $ do
 
     let runTest m p ct bod = runReqOnApi reqBodyApi EmptyContext server m p "" [(hContentType,ct)] bod
-        goodCT = "application/json;charset=utf-8"
-                 -- "application/json"
+        goodCT = "application/json"
         badCT  = "application/nonsense"
 
     it "passes the argument to the handler" $ do

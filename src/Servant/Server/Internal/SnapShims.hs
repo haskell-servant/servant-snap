@@ -12,13 +12,8 @@ import           Snap.Core
 
 type Application m = Request -> (Response -> m Response) -> m Response
 
-snapToApplication :: MonadSnap m => m () -> Application m
+snapToApplication :: MonadSnap m => m a -> Application m
 snapToApplication snapAction req respond = do
-  putRequest req
-  snapAction >> getResponse >>= respond
-
-snapToApplication' :: MonadSnap m => m a -> Application m
-snapToApplication' snapAction req respond = do
   putRequest req
   snapAction >> getResponse >>= respond
 

@@ -497,7 +497,7 @@ instance HasServer Raw context m where
   route Proxy _ rawApplication = RawRouter $ \ env request respond -> do
     r <- runDelayed rawApplication env request
     case r of
-      Route app   -> (snapToApplication' app) request (respond . Route)
+      Route app   -> (snapToApplication app) request (respond . Route)
       Fail a      -> respond $ Fail a
       FailFatal e -> respond $ FailFatal e
 
