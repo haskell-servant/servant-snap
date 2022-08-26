@@ -1,5 +1,5 @@
 name:                servant-snap
-version:             0.9.0
+version:             0.9.1
 synopsis:            A family of combinators for defining webservices APIs and serving them
 description:
   Interpret a Servant API as a Snap server, using any Snaplets you like.
@@ -21,7 +21,7 @@ copyright:           2014 Zalora South East Asia Pte Ltd
 category:            Web
 build-type:          Simple
 cabal-version:       >=1.10
-tested-with:         GHC == 8.0.2, GHC == 8.2.2, GHC == 8.4.4, GHC == 8.6.5
+tested-with:         GHC == 8.0.2, GHC == 8.2.2, GHC == 8.4.4, GHC == 8.6.5, GHC == 8.10.7
 extra-source-files:
   CHANGELOG.md
   README.md
@@ -44,7 +44,7 @@ library
     Servant.Server.Internal.SnapShims
     Servant.Utils.StaticFiles
   build-depends:
-        base               >= 4.7  && < 4.14
+        base               >= 4.7  && < 4.15
       , aeson              >= 0.7  && < 1.5
       , attoparsec         >= 0.12 && < 0.14
       , base64-bytestring  >= 1.0  && < 1.1
@@ -59,7 +59,7 @@ library
       , network-uri        >= 2.6  && < 2.7
       , mtl                >= 2.0  && < 2.3
       , mmorph             >= 1    && < 1.2
-      , servant            >= 0.15 && < 0.17
+      , servant            >= 0.15 && < 0.19
       , snap               >= 1.0  && < 1.2
       , snap-core          >= 1.0  && < 1.1
       , snap-server        >= 1.0  && < 1.2
